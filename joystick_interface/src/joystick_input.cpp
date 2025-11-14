@@ -48,7 +48,7 @@ namespace input_interfaces
 
     // Publisher for custom msg : Twist + teleop mode + gripper command
     teleop_cmd_publisher_ =
-        this->create_publisher<joystick_interface::msg::TeleopCmd>("teleop_cmd", 10);
+        this->create_publisher<joystick_interface::msg::TeleopCmd>("/teleop_cmd", 10);
 
     RCLCPP_INFO(this->get_logger(), "Joystick Controller node initialized");
   }

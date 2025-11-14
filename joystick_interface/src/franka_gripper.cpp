@@ -5,6 +5,8 @@ namespace input_interfaces
 
   FrankaGripper::FrankaGripper() : Node("franka_gripper")
   {
+    using namespace std::chrono_literals;
+
     // Read gripper parameters from config file
     // Using unique parameter names to avoid conflicts
     if (!this->has_parameter("gripper_closed_width"))
@@ -13,7 +15,7 @@ namespace input_interfaces
     }
     if (!this->has_parameter("gripper_open_width"))
     {
-      this->declare_parameter("gripper_open_width", 0.05);
+      this->declare_parameter("gripper_open_width", 0.02);
     }
     if (!this->has_parameter("gripper_closing_speed"))
     {
@@ -41,8 +43,11 @@ namespace input_interfaces
         "/joy", 10, std::bind(&FrankaGripper::joy3dCallback, this, std::placeholders::_1));
 
     gripper_action_client_ =
-        rclcpp_action::create_client<franka_msgs::action::Grasp>(this, "/franka_gripper/grasp");
-
+        rclcpp_action::create_client<franka_msgs::action::Grasp>(this, "/fr3_gripper/grasp");
+    if (!gripper_action_client_->wait_for_action_server(5s)) {
+          RCLCPP_ERROR(this->get_logger(), "Grasping action server not available.");
+        }
+      
     RCLCPP_INFO(this->get_logger(), "Franka gripper connected. Waiting for teleop commands...");
   }
 
@@ -67,9 +72,13 @@ namespace input_interfaces
         goal_msg.width = open_width_;
         is_gripper_closed = false;
       }
+    
+      if(gripper_action_client_->action_server_is_ready())
+        gripper_action_client_->async_send_goal(goal_msg);
+      else
+        RCLCPP_WARN(this->get_logger(), "Gripper action server not ready");
     }
     last_button_gripper_ = cur_button_gripper_;
-    gripper_action_client_->async_send_goal(goal_msg);
   }
 
   void FrankaGripper::joy3dCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
@@ -93,11 +102,14 @@ namespace input_interfaces
         goal_msg.width = open_width_;
         is_gripper_closed = false;
       }
+    
+      if(gripper_action_client_->action_server_is_ready())
+        gripper_action_client_->async_send_goal(goal_msg);
+      else
+        RCLCPP_WARN(this->get_logger(), "Gripper action server not ready");
     }
     last_button_gripper_ = cur_button_gripper_;
-    gripper_action_client_->async_send_goal(goal_msg);
   }
-
 } // namespace input_interfaces
 
 int main(int argc, char **argv)
