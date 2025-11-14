@@ -32,9 +32,13 @@ namespace input_interfaces
                 "Gripper parameters: closed_width: %.2f, closing_speed: %.2f, closing_force: %.2f",
                 closed_width_, closing_speed_, closing_force_);
 
-    teleop_cmd_subscriber_ = this->create_subscription<joystick_interface::msg::TeleopCmd>(
-        "/teleop_cmd", 10,
-        std::bind(&FrankaGripper::teleopCmdCallback, this, std::placeholders::_1));
+    // Create a subscription to the SpaceMouse Joy messages on "/spacenav/joy".
+    spacenav_joy_subscriber_ = this->create_subscription<sensor_msgs::msg::Joy>(
+        "/spacenav/joy", 10, std::bind(&FrankaGripper::spaceMouseCallback, this, std::placeholders::_1));
+
+    // Create a subscription to the 3D joystick Joy messages on "/joy".
+    joy_subscriber_ = this->create_subscription<sensor_msgs::msg::Joy>(
+        "/joy", 10, std::bind(&FrankaGripper::joy3dCallback, this, std::placeholders::_1));
 
     gripper_action_client_ =
         rclcpp_action::create_client<franka_msgs::action::Grasp>(this, "/franka_gripper/grasp");
@@ -42,34 +46,58 @@ namespace input_interfaces
     RCLCPP_INFO(this->get_logger(), "Franka gripper connected. Waiting for teleop commands...");
   }
 
-  void FrankaGripper::teleopCmdCallback(const joystick_interface::msg::TeleopCmd::SharedPtr msg)
+  void FrankaGripper::spaceMouseCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
   {
-    if (msg->gripper_cmd == joystick_interface::msg::TeleopCmd::GRIPPER_NO_CMD)
-    {
-      return;
-    }
-
-    if (!gripper_action_client_->wait_for_action_server(std::chrono::seconds(1)))
-    {
-      RCLCPP_ERROR(this->get_logger(), "Gripper action server not available after waiting");
-      return;
-    }
-
-    auto goal_msg =franka_msgs::action::Grasp::Goal();
+    cur_button_gripper_ = msg->buttons[0];
+    auto goal_msg = franka_msgs::action::Grasp::Goal();
     goal_msg.speed = closing_speed_;
-    if (msg->gripper_cmd == joystick_interface::msg::TeleopCmd::GRIPPER_CMD_OPEN)
+    goal_msg.force = closing_force_;
+    // --- Gripper command ---
+    if (cur_button_gripper_ == 1 && last_button_gripper_ == 0)
     {
-      RCLCPP_INFO(this->get_logger(), "Franka gripper OPEN.");
-      goal_msg.width = open_width_;
+      if (!is_gripper_closed)
+      {
+        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_CLOSE");
+        goal_msg.width = closed_width_;
+        is_gripper_closed = true;
+      }
+      else
+      {
+        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_OPEN");
+        goal_msg.width = open_width_;
+        is_gripper_closed = false;
+      }
     }
-    else if (msg->gripper_cmd == joystick_interface::msg::TeleopCmd::GRIPPER_CMD_CLOSE)
-    {
-      RCLCPP_INFO(this->get_logger(), "Franka gripper CLOSE.");
-      goal_msg.width = closed_width_;
-    }
-
+    last_button_gripper_ = cur_button_gripper_;
     gripper_action_client_->async_send_goal(goal_msg);
   }
+
+  void FrankaGripper::joy3dCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
+  {
+    cur_button_gripper_ = msg->buttons[10];
+    auto goal_msg = franka_msgs::action::Grasp::Goal();
+    goal_msg.speed = closing_speed_;
+    goal_msg.force = closing_force_;
+    // --- Gripper command ---
+    if (cur_button_gripper_ == 1 && last_button_gripper_ == 0)
+    {
+      if (!is_gripper_closed)
+      {
+        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_CLOSE");
+        goal_msg.width = closed_width_;
+        is_gripper_closed = true;
+      }
+      else
+      {
+        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_OPEN");
+        goal_msg.width = open_width_;
+        is_gripper_closed = false;
+      }
+    }
+    last_button_gripper_ = cur_button_gripper_;
+    gripper_action_client_->async_send_goal(goal_msg);
+  }
+
 } // namespace input_interfaces
 
 int main(int argc, char **argv)

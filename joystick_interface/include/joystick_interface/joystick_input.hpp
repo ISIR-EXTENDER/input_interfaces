@@ -64,12 +64,6 @@ namespace input_interfaces
     // Button state handling variables to detect single presses
     int last_button_1_{0}; ///< Stores the previous state of button 1 (mode toggle).
     int cur_button_1_{0};  ///< Stores the current state of button 1.
-    bool button_0_already_handled_ = false; ///< Flag to ensure button 0 press is handled only once.
     bool button_1_already_handled_ = false; ///< Flag to ensure button 1 press is handled only once.
-
-    /// @brief state of the gripper
-    bool is_gripper_closed{false};
-    int last_button_gripper_{0}; ///< Stores the previous state of button 0 (gripper).
-    int cur_button_gripper_{0};  ///< Stores the current state of button 0.
   };
 } // namespace control_interfaces

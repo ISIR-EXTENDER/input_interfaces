@@ -56,28 +56,9 @@ namespace input_interfaces
   void JoystickInput::joy3dCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
   {
     joystick_interface::msg::TeleopCmd cmd_msg;
-    cmd_msg.gripper_cmd = joystick_interface::msg::TeleopCmd::GRIPPER_NO_CMD;
 
     // Update current button states from message
-    cur_button_gripper_ = msg->buttons[10];
     cur_button_1_ = msg->buttons[11];
-
-    // --- Gripper command ---
-    if (cur_button_gripper_ == 1 && last_button_gripper_ == 0)
-    {
-      if (!is_gripper_closed)
-      {
-        cmd_msg.gripper_cmd = joystick_interface::msg::TeleopCmd::GRIPPER_CMD_CLOSE;
-        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_CLOSE");
-        is_gripper_closed = true;
-      }
-      else
-      {
-        cmd_msg.gripper_cmd = joystick_interface::msg::TeleopCmd::GRIPPER_CMD_OPEN;
-        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_OPEN");
-        is_gripper_closed = false;
-      }
-    }
 
     // --- Mode switch: rising edge (single event per press) ---
     if (cur_button_1_ == 1 && last_button_1_ == 0)
@@ -120,7 +101,6 @@ namespace input_interfaces
     }
 
     // --- Update button states (after all edge checks) ---
-    last_button_gripper_ = cur_button_gripper_;
     last_button_1_ = cur_button_1_;
 
     // --- Compute and publish Twist ---
@@ -157,28 +137,9 @@ namespace input_interfaces
   void JoystickInput::joyCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
   {
     joystick_interface::msg::TeleopCmd cmd_msg;
-    cmd_msg.gripper_cmd = joystick_interface::msg::TeleopCmd::GRIPPER_NO_CMD;
     
     // Update current button states from message
-    cur_button_gripper_ = msg->buttons[0];
     cur_button_1_ = msg->buttons[1];
-
-    // --- Gripper command ---
-    if (cur_button_gripper_ == 1 && last_button_gripper_ == 0)
-    {
-      if (!is_gripper_closed)
-      {
-        cmd_msg.gripper_cmd = joystick_interface::msg::TeleopCmd::GRIPPER_CMD_CLOSE;
-        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_CLOSE");
-        is_gripper_closed = true;
-      }
-      else
-      {
-        cmd_msg.gripper_cmd = joystick_interface::msg::TeleopCmd::GRIPPER_CMD_OPEN;
-        RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_OPEN");
-        is_gripper_closed = false;
-      }
-    }
 
     // --- Mode switch: rising edge (single event per press) ---
     if (cur_button_1_ == 1 && last_button_1_ == 0)
@@ -221,7 +182,6 @@ namespace input_interfaces
     }
 
     // --- Update button states (after all edge checks) ---
-    last_button_gripper_ = cur_button_gripper_;
     last_button_1_ = cur_button_1_;
 
     // --- Compute and publish Twist ---
