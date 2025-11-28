@@ -53,24 +53,32 @@ namespace input_interfaces
 
   void FrankaGripper::spaceMouseCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
   {
-    cur_button_gripper_ = msg->buttons[0];
+    // Guard against short button arrays (e.g. different devices or misconfigured drivers).
+    if (!msg->buttons.empty())
+    {
+      cur_button_gripper_ = msg->buttons[0];
+    }
+    else
+    {
+      cur_button_gripper_ = 0;
+    }
     auto goal_msg = franka_msgs::action::Grasp::Goal();
     goal_msg.speed = closing_speed_;
     goal_msg.force = closing_force_;
     // --- Gripper command ---
     if (cur_button_gripper_ == 1 && last_button_gripper_ == 0)
     {
-      if (!is_gripper_closed)
+      if (!is_gripper_closed_)
       {
         RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_CLOSE");
         goal_msg.width = closed_width_;
-        is_gripper_closed = true;
+        is_gripper_closed_ = true;
       }
       else
       {
         RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_OPEN");
         goal_msg.width = open_width_;
-        is_gripper_closed = false;
+        is_gripper_closed_ = false;
       }
     
       if(gripper_action_client_->action_server_is_ready())
@@ -83,24 +91,31 @@ namespace input_interfaces
 
   void FrankaGripper::joy3dCallback(const sensor_msgs::msg::Joy::SharedPtr msg)
   {
-    cur_button_gripper_ = msg->buttons[10];
+    if (msg->buttons.size() > 10)
+    {
+      cur_button_gripper_ = msg->buttons[10];
+    }
+    else
+    {
+      cur_button_gripper_ = 0;
+    }
     auto goal_msg = franka_msgs::action::Grasp::Goal();
     goal_msg.speed = closing_speed_;
     goal_msg.force = closing_force_;
     // --- Gripper command ---
     if (cur_button_gripper_ == 1 && last_button_gripper_ == 0)
     {
-      if (!is_gripper_closed)
+      if (!is_gripper_closed_)
       {
         RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_CLOSE");
         goal_msg.width = closed_width_;
-        is_gripper_closed = true;
+        is_gripper_closed_ = true;
       }
       else
       {
         RCLCPP_INFO(this->get_logger(), "Button 0: Sending GRIPPER_CMD_OPEN");
         goal_msg.width = open_width_;
-        is_gripper_closed = false;
+        is_gripper_closed_ = false;
       }
     
       if(gripper_action_client_->action_server_is_ready())

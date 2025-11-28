@@ -35,7 +35,7 @@ namespace input_interfaces
     double closing_force_;
 
     /// @brief state of the gripper
-    bool is_gripper_closed{false};
+    bool is_gripper_closed_{false};
     int last_button_gripper_{0}; ///< Stores the previous state of button 0 (gripper).
     int cur_button_gripper_{0};  ///< Stores the current state of button 0.
   };
