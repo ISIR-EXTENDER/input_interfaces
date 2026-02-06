@@ -1,0 +1,17 @@
+tablet_interface_node:
+  ros__parameters:
+    teleop_cmd_topic: "/teleop_cmd"
+    publish_rate_hz: 100.0
+    watchdog_timeout_ms: 150
+    max_linear_mps: 1.0
+    max_linear_z_mps: 1.0
+    max_angular_rps: 1.0
+    linear_scale: 1.0
+    z_scale: 1.0
+    angular_scale: 1.0
+    default_mode: 0
+    accept_mode_from_client: true
+    state_publish_hz: 20.0
+    bind_host: "0.0.0.0"
+    bind_port: 8765
+    ws_path: "/ws/control"
