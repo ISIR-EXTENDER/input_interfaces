@@ -6,9 +6,9 @@ tablet_interface_node:
     max_linear_mps: 1.0
     max_linear_z_mps: 1.0
     max_angular_rps: 1.0
-    linear_scale: 1.0
-    z_scale: 1.0
-    angular_scale: 1.0
+    linear_scale: 0.035
+    z_scale: 0.025
+    angular_scale: 0.2
     default_mode: 0
     accept_mode_from_client: true
     state_publish_hz: 20.0
