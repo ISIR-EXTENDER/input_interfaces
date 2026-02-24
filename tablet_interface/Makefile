@@ -22,7 +22,7 @@ run-ws-client: ## Run WS client test (50 Hz)
 
 .PHONY: test
 test: ## Run unit tests
-	@uv run pytest -q test/test_ws_models.py test/test_safety_gate.py
+	@uv run pytest -q test/test_ws_models.py test/test_safety_gate.py test/test_teleop_mapping.py
 
 .PHONY: help
 help:

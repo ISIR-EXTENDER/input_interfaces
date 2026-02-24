@@ -9,9 +9,18 @@ tablet_interface_node:
     linear_scale: 0.035
     z_scale: 0.025
     angular_scale: 0.2
+    # Explorer tablet mapping aligned with joystick_interface explorer 3D joystick config.
+    linear_axes: [1, 0, 2]
+    linear_signs: [-1.0, -1.0, 1.0]
+    angular_axes: [0, 1, 2]
+    angular_signs: [1.0, -1.0, -1.0]
     default_mode: 0
     accept_mode_from_client: true
     state_publish_hz: 20.0
     bind_host: "0.0.0.0"
     bind_port: 8765
     ws_path: "/ws/control"
+    state_machine_topic: "/petanque_state_machine/change_state"
+    petanque_param_service: "/petanque_throw/set_parameters"
+    petanque_total_duration_param: "total_duration"
+    param_call_timeout_sec: 1.5

@@ -15,7 +15,6 @@ except Exception:  # pragma: no cover
     ValidationError = Exception  # type: ignore
 
 from tablet_interface.ros_teleop_publisher import TabletInterfaceNode
-from tablet_interface.safety_gate import Twist
 
 
 def run_uvicorn_server(node: TabletInterfaceNode) -> None:
@@ -26,7 +25,13 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
         return
 
     try:
-        from tablet_interface.ws_models import CmdMessage, EventMessage
+        from tablet_interface.ws_models import (
+            CmdMessage,
+            EventMessage,
+            PetanqueConfigMessage,
+            StateCmdMessage,
+            UiButtonMessage,
+        )
     except Exception as exc:  # pragma: no cover
         node.get_logger().error(
             f"pydantic not available. WebSocket server cannot start: {exc}"
@@ -36,9 +41,6 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
     host = node.get_parameter("bind_host").value
     port = int(node.get_parameter("bind_port").value)
     ws_path = node.get_parameter("ws_path").value
-    linear_scale = float(node.get_parameter("linear_scale").value)
-    angular_scale = float(node.get_parameter("angular_scale").value)
-    z_scale = float(node.get_parameter("z_scale").value)
 
     app = FastAPI()
 
@@ -78,8 +80,74 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
         try:
             while True:
                 payload = await websocket.receive_json()
+                msg_type = payload.get("type") if isinstance(payload, dict) else None
                 try:
-                    cmd = CmdMessage.model_validate(payload)
+                    if msg_type == "teleop_cmd":
+                        cmd = CmdMessage.model_validate(payload)
+                        twist = node.map_and_scale_cmd(
+                            linear_values=(cmd.linear.x, cmd.linear.y, cmd.linear.z),
+                            angular_values=(cmd.angular.x, cmd.angular.y, cmd.angular.z),
+                        )
+                        node.update_latest_cmd(
+                            twist=twist,
+                            mode=int(cmd.mode),
+                            seq=int(cmd.seq),
+                            received_ms=node._now_ms(),
+                        )
+                        node.get_logger().debug(
+                            f"WS teleop_cmd accepted seq={cmd.seq} mode={cmd.mode}"
+                        )
+                        continue
+
+                    if msg_type == "state_cmd":
+                        state_cmd = StateCmdMessage.model_validate(payload)
+                        ok = node.send_state_command(state_cmd.command)
+                        await _send_event(
+                            websocket,
+                            code="STATE_CMD_OK" if ok else "STATE_CMD_FAILED",
+                            severity="info" if ok else "warning",
+                            message=f"state_cmd={state_cmd.command}",
+                        )
+                        continue
+
+                    if msg_type == "petanque_cfg":
+                        cfg = PetanqueConfigMessage.model_validate(payload)
+                        ok = node.set_petanque_total_duration(cfg.total_duration)
+                        await _send_event(
+                            websocket,
+                            code="PETANQUE_CFG_OK" if ok else "PETANQUE_CFG_FAILED",
+                            severity="info" if ok else "warning",
+                            message=f"total_duration={cfg.total_duration:.3f}",
+                        )
+                        continue
+
+                    if msg_type == "ui_button":
+                        button = UiButtonMessage.model_validate(payload)
+                        handled = False
+                        if button.topic == node.state_machine_topic:
+                            handled = True
+                            ok = node.send_state_command(button.payload)
+                            await _send_event(
+                                websocket,
+                                code="STATE_CMD_OK" if ok else "STATE_CMD_FAILED",
+                                severity="info" if ok else "warning",
+                                message=f"ui_button payload={button.payload}",
+                            )
+                        if not handled:
+                            await _send_event(
+                                websocket,
+                                code="UI_BUTTON_IGNORED",
+                                severity="warning",
+                                message=f"unsupported ui_button topic={button.topic}",
+                            )
+                        continue
+
+                    await _send_event(
+                        websocket,
+                        code="CMD_INVALID_TYPE",
+                        severity="warning",
+                        message=f"unsupported type={msg_type}",
+                    )
                 except ValidationError as exc:
                     node.get_logger().warning(f"WS cmd invalid: {exc}")
                     await _send_event(
@@ -88,25 +156,6 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                         severity="warning",
                         message=str(exc),
                     )
-                    continue
-
-                twist = Twist()
-                twist.linear.x = cmd.linear.x * linear_scale
-                twist.linear.y = cmd.linear.y * linear_scale
-                twist.linear.z = cmd.linear.z * z_scale
-                twist.angular.x = cmd.angular.x * angular_scale
-                twist.angular.y = cmd.angular.y * angular_scale
-                twist.angular.z = cmd.angular.z * angular_scale
-
-                node.update_latest_cmd(
-                    twist=twist,
-                    mode=int(cmd.mode),
-                    seq=int(cmd.seq),
-                    received_ms=node._now_ms(),
-                )
-                node.get_logger().debug(
-                    f"WS cmd accepted seq={cmd.seq} mode={cmd.mode}"
-                )
         except Exception:
             pass
         finally:

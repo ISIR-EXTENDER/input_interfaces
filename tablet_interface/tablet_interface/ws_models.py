@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field, ValidationError, conint, confloat
+from pydantic import BaseModel, Field, ValidationError, confloat, conint
 
 
 class Vector3Model(BaseModel):
-    x: confloat(strict=True)
-    y: confloat(strict=True)
-    z: confloat(strict=True)
+    x: confloat(ge=-1.0, le=1.0)
+    y: confloat(ge=-1.0, le=1.0)
+    z: confloat(ge=-1.0, le=1.0)
 
 
 class CmdMessage(BaseModel):
@@ -17,6 +17,23 @@ class CmdMessage(BaseModel):
     mode: conint(strict=True, ge=0, le=3)
     linear: Vector3Model
     angular: Vector3Model
+
+
+class StateCmdMessage(BaseModel):
+    type: Literal["state_cmd"]
+    command: Literal["teleop", "activate_throw", "go_to_start", "throw", "stop"]
+
+
+class PetanqueConfigMessage(BaseModel):
+    type: Literal["petanque_cfg"]
+    total_duration: confloat(gt=0)
+
+
+class UiButtonMessage(BaseModel):
+    type: Literal["ui_button"]
+    topic: str = Field(min_length=1)
+    payload: str = Field(min_length=1)
+    widget_id: str | None = None
 
 
 class StateMessage(BaseModel):
@@ -38,6 +55,9 @@ class EventMessage(BaseModel):
 
 __all__ = [
     "CmdMessage",
+    "StateCmdMessage",
+    "PetanqueConfigMessage",
+    "UiButtonMessage",
     "StateMessage",
     "EventMessage",
     "Vector3Model",
