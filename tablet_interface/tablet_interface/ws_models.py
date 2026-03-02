@@ -21,7 +21,7 @@ class CmdMessage(BaseModel):
 
 class StateCmdMessage(BaseModel):
     type: Literal["state_cmd"]
-    command: Literal["teleop", "activate_throw", "go_to_start", "throw", "stop"]
+    command: Literal["teleop", "activate_throw", "go_to_start", "throw", "pick_up", "stop"]
 
 
 class PetanqueConfigMessage(BaseModel):

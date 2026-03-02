@@ -70,6 +70,15 @@ def test_state_cmd_valid() -> None:
     assert msg.command == "go_to_start"
 
 
+def test_state_cmd_pick_up_valid() -> None:
+    payload = {
+        "type": "state_cmd",
+        "command": "pick_up",
+    }
+    msg = StateCmdMessage.model_validate(payload)
+    assert msg.command == "pick_up"
+
+
 def test_state_cmd_invalid() -> None:
     with pytest.raises(ValidationError):
         StateCmdMessage.model_validate(

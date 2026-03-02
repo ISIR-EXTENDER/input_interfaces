@@ -216,7 +216,14 @@ class TabletInterfaceNode(Node):
 
     def send_state_command(self, command: str) -> bool:
         normalized = command.strip().lower()
-        if normalized not in {"teleop", "activate_throw", "go_to_start", "throw", "stop"}:
+        if normalized not in {
+            "teleop",
+            "activate_throw",
+            "go_to_start",
+            "throw",
+            "pick_up",
+            "stop",
+        }:
             self.get_logger().warning(f"Invalid state machine command: {command}")
             return False
 
