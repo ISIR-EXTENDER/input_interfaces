@@ -40,6 +40,35 @@ UI sends normalized values in [-1, 1]. Backend applies scaling and safety gating
 }
 ```
 
+For pétanque integration, backend also supports:
+
+```json
+{ "type": "state_cmd", "command": "teleop" }
+```
+
+Allowed `command` values: `teleop`, `activate_throw`, `go_to_start`, `throw`, `stop`.
+These are published as `std_msgs/String` on `/petanque_state_machine/change_state`.
+
+```json
+{ "type": "petanque_cfg", "total_duration": 1.0 }
+```
+
+This updates `/petanque_throw` parameter `total_duration` through `/petanque_throw/set_parameters`.
+
+`ui_button` messages are also accepted for compatibility. If `topic` matches
+`/petanque_state_machine/change_state`, backend forwards `payload` to the same bridge.
+
+### Mapping and scaling
+
+The backend can remap and invert tablet axes before publishing `/teleop_cmd`.
+This is configured through the ROS params file:
+
+- `linear_axes` / `linear_signs`
+- `angular_axes` / `angular_signs`
+- `linear_scale`, `z_scale`, `angular_scale`
+
+For Explorer, the default config mirrors `joystick_interface` explorer joystick signs.
+
 **Expected behavior**
 - While the script runs, `/teleop_cmd` should be non-zero.
 - When the script stops or disconnects, `/teleop_cmd` should return to zero after the watchdog timeout.

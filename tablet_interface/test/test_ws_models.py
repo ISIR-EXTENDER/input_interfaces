@@ -1,7 +1,14 @@
 import pytest
 from pydantic import ValidationError
 
-from tablet_interface.ws_models import CmdMessage, EventMessage, StateMessage
+from tablet_interface.ws_models import (
+    CmdMessage,
+    EventMessage,
+    PetanqueConfigMessage,
+    StateCmdMessage,
+    StateMessage,
+    UiButtonMessage,
+)
 
 
 def test_cmd_message_valid() -> None:
@@ -37,7 +44,14 @@ def test_cmd_message_valid() -> None:
             "type": "teleop_cmd",
             "seq": "1",
             "mode": 0,
-            "linear": {"x": "0", "y": 0.0, "z": 0.0},
+            "linear": {"x": {}, "y": 0.0, "z": 0.0},
+            "angular": {"x": 0.0, "y": 0.0, "z": 0.0},
+        },
+        {  # out-of-range vector component
+            "type": "teleop_cmd",
+            "seq": 1,
+            "mode": 0,
+            "linear": {"x": 1.2, "y": 0.0, "z": 0.0},
             "angular": {"x": 0.0, "y": 0.0, "z": 0.0},
         },
     ],
@@ -45,6 +59,104 @@ def test_cmd_message_valid() -> None:
 def test_cmd_message_invalid(payload: dict) -> None:
     with pytest.raises(ValidationError):
         CmdMessage.model_validate(payload)
+
+
+def test_state_cmd_valid() -> None:
+    payload = {
+        "type": "state_cmd",
+        "command": "go_to_start",
+    }
+    msg = StateCmdMessage.model_validate(payload)
+    assert msg.command == "go_to_start"
+
+
+def test_state_cmd_pick_up_valid() -> None:
+    payload = {
+        "type": "state_cmd",
+        "command": "pick_up",
+    }
+    msg = StateCmdMessage.model_validate(payload)
+    assert msg.command == "pick_up"
+
+
+def test_state_cmd_invalid() -> None:
+    with pytest.raises(ValidationError):
+        StateCmdMessage.model_validate(
+            {
+                "type": "state_cmd",
+                "command": "go_to_end",
+            }
+        )
+
+
+def test_petanque_cfg_valid() -> None:
+    payload = {
+        "type": "petanque_cfg",
+        "total_duration": 1.25,
+    }
+    msg = PetanqueConfigMessage.model_validate(payload)
+    assert msg.total_duration == pytest.approx(1.25)
+    assert msg.angle_between_start_and_finish is None
+
+
+def test_petanque_cfg_angle_valid() -> None:
+    payload = {
+        "type": "petanque_cfg",
+        "angle_between_start_and_finish": 0.7,
+    }
+    msg = PetanqueConfigMessage.model_validate(payload)
+    assert msg.total_duration is None
+    assert msg.angle_between_start_and_finish == pytest.approx(0.7)
+
+
+def test_petanque_cfg_both_fields_valid() -> None:
+    payload = {
+        "type": "petanque_cfg",
+        "total_duration": 1.2,
+        "angle_between_start_and_finish": 0.4,
+    }
+    msg = PetanqueConfigMessage.model_validate(payload)
+    assert msg.total_duration == pytest.approx(1.2)
+    assert msg.angle_between_start_and_finish == pytest.approx(0.4)
+
+
+def test_petanque_cfg_invalid() -> None:
+    with pytest.raises(ValidationError):
+        PetanqueConfigMessage.model_validate(
+            {
+                "type": "petanque_cfg",
+                "total_duration": 0,
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        PetanqueConfigMessage.model_validate(
+            {
+                "type": "petanque_cfg",
+            }
+        )
+
+
+def test_ui_button_valid() -> None:
+    payload = {
+        "type": "ui_button",
+        "topic": "/petanque_state_machine/change_state",
+        "payload": "throw",
+        "widget_id": "pet-throw",
+    }
+    msg = UiButtonMessage.model_validate(payload)
+    assert msg.payload == "throw"
+
+
+def test_ui_button_invalid() -> None:
+    with pytest.raises(ValidationError):
+        UiButtonMessage.model_validate(
+            {
+                "type": "ui_button",
+                "topic": "",
+                "payload": "throw",
+            }
+        )
 
 
 def test_state_message_valid() -> None:

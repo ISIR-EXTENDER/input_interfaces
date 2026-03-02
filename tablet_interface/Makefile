@@ -3,8 +3,8 @@ SHELL := /bin/bash
 .PHONY: run-node
 run-node: ## Run tablet_interface node with uv
 	@source /opt/ros/humble/setup.bash && \
-	source /home/susana/workspace/extender_workspace/install/setup.bash && \
-	uv run python -m tablet_interface.main --ros-args --params-file config/tablet_interface_parameters.yaml
+	source /home/susana/workspace/extender_workspace/install/extender_msgs/share/extender_msgs/package.bash && \
+	uv run --with numpy --with pydantic --with fastapi --with uvicorn python -m tablet_interface.main --ros-args --params-file config/tablet_interface_parameters.yaml
 
 .PHONY: kill-port
 kill-port: ## Kill any process listening on port 8765
@@ -18,11 +18,11 @@ restart-node: ## Kill existing listener on 8765 then run node
 
 .PHONY: run-ws-client
 run-ws-client: ## Run WS client test (50 Hz)
-	@uv run python scripts/ws_client_test.py --host 127.0.0.1 --port 8765 --path /ws/control
+	@uv run --with websockets python scripts/ws_client_test.py --host 127.0.0.1 --port 8765 --path /ws/control
 
 .PHONY: test
 test: ## Run unit tests
-	@uv run pytest -q test/test_ws_models.py test/test_safety_gate.py
+	@uv run pytest -q test/test_ws_models.py test/test_safety_gate.py test/test_teleop_mapping.py
 
 .PHONY: help
 help:
