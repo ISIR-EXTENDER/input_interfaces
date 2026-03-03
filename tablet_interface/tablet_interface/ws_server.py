@@ -28,6 +28,7 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
         from tablet_interface.ws_models import (
             CmdMessage,
             EventMessage,
+            GripperCmdMessage,
             PetanqueConfigMessage,
             StateCmdMessage,
             UiButtonMessage,
@@ -107,6 +108,17 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                             code="STATE_CMD_OK" if ok else "STATE_CMD_FAILED",
                             severity="info" if ok else "warning",
                             message=f"state_cmd={state_cmd.command}",
+                        )
+                        continue
+
+                    if msg_type == "gripper_cmd":
+                        gripper_cmd = GripperCmdMessage.model_validate(payload)
+                        ok = node.set_gripper(gripper_cmd.action)
+                        await _send_event(
+                            websocket,
+                            code="GRIPPER_CMD_OK" if ok else "GRIPPER_CMD_FAILED",
+                            severity="info" if ok else "warning",
+                            message=f"gripper_cmd={gripper_cmd.action}",
                         )
                         continue
 

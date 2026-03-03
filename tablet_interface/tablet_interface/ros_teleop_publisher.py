@@ -7,11 +7,11 @@ import rclpy
 from rclpy.node import Node
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
-from std_msgs.msg import Float32MultiArray, String
+from geometry_msgs.msg import Twist
+from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
 
-from tablet_interface.safety_gate import SafetyGate, TeleopCmd, Twist
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 
 
@@ -21,13 +21,9 @@ class TabletInterfaceNode(Node):
 
         self.declare_parameter("teleop_cmd_topic", "/teleop_cmd")
         self.declare_parameter("publish_rate_hz", 30.0)
-        self.declare_parameter("watchdog_timeout_ms", 200)
-        self.declare_parameter("max_linear_mps", 0.2)
-        self.declare_parameter("max_linear_z_mps", 0.2)
-        self.declare_parameter("max_angular_rps", 0.5)
         self.declare_parameter("linear_scale", 0.2)
         self.declare_parameter("angular_scale", 0.5)
-        self.declare_parameter("z_scale", 0.2)
+        self.declare_parameter("swap_xy", False)
         self.declare_parameter("linear_axes", [0, 1, 2])
         self.declare_parameter("linear_signs", [1.0, 1.0, 1.0])
         self.declare_parameter("angular_axes", [0, 1, 2])
@@ -41,6 +37,9 @@ class TabletInterfaceNode(Node):
         self.declare_parameter(
             "state_machine_topic", "/petanque_state_machine/change_state"
         )
+        self.declare_parameter("gripper_topic", "/gripper_controller/commands")
+        self.declare_parameter("gripper_open_position", 0.0)
+        self.declare_parameter("gripper_close_position", 1.05)
         self.declare_parameter("hub_digital_output_topic", "/hub/digital_output")
         self.declare_parameter("hub_electromagnet_channel", 2.0)
         self.declare_parameter("petanque_param_service", "/petanque_throw/set_parameters")
@@ -53,13 +52,9 @@ class TabletInterfaceNode(Node):
 
         self.teleop_cmd_topic = self.get_parameter("teleop_cmd_topic").value
         self.publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
-        self.watchdog_timeout_ms = int(self.get_parameter("watchdog_timeout_ms").value)
-        self.max_linear_mps = float(self.get_parameter("max_linear_mps").value)
-        self.max_linear_z_mps = float(self.get_parameter("max_linear_z_mps").value)
-        self.max_angular_rps = float(self.get_parameter("max_angular_rps").value)
         self.linear_scale = float(self.get_parameter("linear_scale").value)
         self.angular_scale = float(self.get_parameter("angular_scale").value)
-        self.z_scale = float(self.get_parameter("z_scale").value)
+        self.swap_xy = bool(self.get_parameter("swap_xy").value)
         linear_axes_param = list(self.get_parameter("linear_axes").value)
         linear_signs_param = list(self.get_parameter("linear_signs").value)
         angular_axes_param = list(self.get_parameter("angular_axes").value)
@@ -71,6 +66,13 @@ class TabletInterfaceNode(Node):
         self.bind_port = int(self.get_parameter("bind_port").value)
         self.ws_path = str(self.get_parameter("ws_path").value)
         self.state_machine_topic = str(self.get_parameter("state_machine_topic").value)
+        self.gripper_topic = str(self.get_parameter("gripper_topic").value)
+        self.gripper_open_position = float(
+            self.get_parameter("gripper_open_position").value
+        )
+        self.gripper_close_position = float(
+            self.get_parameter("gripper_close_position").value
+        )
         self.hub_digital_output_topic = str(
             self.get_parameter("hub_digital_output_topic").value
         )
@@ -103,15 +105,9 @@ class TabletInterfaceNode(Node):
             self.angular_axes = (0, 1, 2)
             self.angular_signs = (1.0, 1.0, 1.0)
 
-        self._gate = SafetyGate(
-            watchdog_timeout_ms=self.watchdog_timeout_ms,
-            max_linear_mps=self.max_linear_mps,
-            max_linear_z_mps=self.max_linear_z_mps,
-            max_angular_rps=self.max_angular_rps,
-            default_mode=self.default_mode,
-        )
-
         self._lock = threading.Lock()
+        self._latest_twist = Twist()
+        self._current_mode: int = self.default_mode
         self._last_cmd_received_ms: Optional[int] = None
         self._last_seq: int = 0
         self._connected: bool = False
@@ -120,6 +116,9 @@ class TabletInterfaceNode(Node):
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
             String, self.state_machine_topic, 10
+        )
+        self._gripper_publisher = self.create_publisher(
+            Float64MultiArray, self.gripper_topic, 10
         )
         self._hub_digital_output_publisher = self.create_publisher(
             Float32MultiArray, self.hub_digital_output_topic, 10
@@ -130,16 +129,7 @@ class TabletInterfaceNode(Node):
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
         self.get_logger().info("Tablet interface node initialized")
-        self.get_logger().info(
-            "Safety params: watchdog_timeout_ms={0} max_linear_mps={1:.3f} "
-            "max_linear_z_mps={2:.3f} max_angular_rps={3:.3f} default_mode={4}".format(
-                self.watchdog_timeout_ms,
-                self.max_linear_mps,
-                self.max_linear_z_mps,
-                self.max_angular_rps,
-                self.default_mode,
-            )
-        )
+        self.get_logger().info("SafetyGate disabled for debug: raw mapped command forwarding")
         self.get_logger().info(
             "WS params: bind_host={0} bind_port={1} ws_path={2} state_publish_hz={3:.1f}".format(
                 self.bind_host,
@@ -149,19 +139,19 @@ class TabletInterfaceNode(Node):
             )
         )
         self.get_logger().info(
-            "Scale params: linear_scale={0:.3f} z_scale={1:.3f} angular_scale={2:.3f}".format(
+            "Scale params: linear_scale={0:.3f} angular_scale={1:.3f}".format(
                 self.linear_scale,
-                self.z_scale,
                 self.angular_scale,
             )
         )
         self.get_logger().info(
             "Mapping params: linear_axes={0} linear_signs={1} "
-            "angular_axes={2} angular_signs={3}".format(
+            "angular_axes={2} angular_signs={3} swap_xy={4}".format(
                 self.linear_axes,
                 self.linear_signs,
                 self.angular_axes,
                 self.angular_signs,
+                str(self.swap_xy).lower(),
             )
         )
         self.get_logger().info(
@@ -178,6 +168,13 @@ class TabletInterfaceNode(Node):
                 self.petanque_param_service,
                 self.petanque_total_duration_param,
                 self.petanque_angle_between_start_and_finish_param,
+            )
+        )
+        self.get_logger().info(
+            "Gripper bridge: topic={0} open={1:.3f} close={2:.3f}".format(
+                self.gripper_topic,
+                self.gripper_open_position,
+                self.gripper_close_position,
             )
         )
         self.get_logger().info(
@@ -201,8 +198,8 @@ class TabletInterfaceNode(Node):
             angular_axes=self.angular_axes,
             angular_signs=self.angular_signs,
             linear_scale=self.linear_scale,
-            z_scale=self.z_scale,
             angular_scale=self.angular_scale,
+            swap_xy=self.swap_xy,
         )
         twist = Twist()
         twist.linear.x = linear[0]
@@ -228,15 +225,9 @@ class TabletInterfaceNode(Node):
         if not self.accept_mode_from_client:
             mode = self.default_mode
 
-        cmd = TeleopCmd(
-            twist=twist,
-            mode=int(mode),
-            seq=int(seq),
-            received_ms=int(received_ms),
-        )
-
         with self._lock:
-            self._gate.update_cmd(cmd)
+            self._latest_twist = self._copy_twist(twist)
+            self._current_mode = int(mode)
             self._last_cmd_received_ms = int(received_ms)
             self._last_seq = int(seq)
 
@@ -259,11 +250,36 @@ class TabletInterfaceNode(Node):
         self.get_logger().info(f"Published state machine command: {normalized}")
         return True
 
+    def set_gripper(self, action: str) -> bool:
+        normalized = action.strip().lower()
+        if normalized not in {"open", "close"}:
+            self.get_logger().warning(f"Invalid gripper action: {action}")
+            return False
+
+        position = (
+            self.gripper_open_position
+            if normalized == "open"
+            else self.gripper_close_position
+        )
+        msg = Float64MultiArray()
+        msg.data = [float(position)]
+        self._gripper_publisher.publish(msg)
+        self.get_logger().info(
+            "Published gripper command: action={0} topic={1} value={2:.3f}".format(
+                normalized,
+                self.gripper_topic,
+                position,
+            )
+        )
+        return True
+
     def set_electromagnet(self, enabled: bool) -> bool:
         msg = Float32MultiArray()
+        # Hardware wiring for the electromagnet is active-low:
+        # 0.0 => magnet ON, 1.0 => magnet OFF.
         msg.data = [
             float(self.hub_electromagnet_channel),
-            1.0 if enabled else 0.0,
+            0.0 if enabled else 1.0,
         ]
         self._hub_digital_output_publisher.publish(msg)
         self.get_logger().info(
@@ -359,23 +375,34 @@ class TabletInterfaceNode(Node):
             return {
                 "connected": self._connected,
                 "cmd_age_ms": cmd_age_ms,
-                "watchdog_timeout_ms": self.watchdog_timeout_ms,
+                "watchdog_timeout_ms": 0,
                 "last_seq": self._last_seq,
                 "publishing_rate_hz": float(self.publish_rate_hz),
-                "current_mode": int(self._gate._last_mode),
+                "current_mode": int(self._current_mode),
                 "events": list(self._last_events),
             }
 
     def _on_timer(self) -> None:
-        now_ms = self._now_ms()
         with self._lock:
-            twist, mode, events = self._gate.process(now_ms=now_ms)
-            self._last_events = list(events)
+            twist = self._copy_twist(self._latest_twist)
+            mode = int(self._current_mode)
+            self._last_events = []
 
         msg = TeleopCommand()
         msg.twist = twist
         msg.mode = int(mode)
         self._publisher.publish(msg)
+
+    @staticmethod
+    def _copy_twist(twist: Twist) -> Twist:
+        out = Twist()
+        out.linear.x = float(twist.linear.x)
+        out.linear.y = float(twist.linear.y)
+        out.linear.z = float(twist.linear.z)
+        out.angular.x = float(twist.angular.x)
+        out.angular.y = float(twist.angular.y)
+        out.angular.z = float(twist.angular.z)
+        return out
 
     def _now_ms(self) -> int:
         return int(self.get_clock().now().nanoseconds / 1_000_000)
