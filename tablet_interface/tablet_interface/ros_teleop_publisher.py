@@ -7,11 +7,11 @@ import rclpy
 from rclpy.node import Node
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
+from geometry_msgs.msg import Twist
 from std_msgs.msg import Float32MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
 
-from tablet_interface.safety_gate import SafetyGate, TeleopCmd, Twist
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 
 
@@ -103,15 +103,9 @@ class TabletInterfaceNode(Node):
             self.angular_axes = (0, 1, 2)
             self.angular_signs = (1.0, 1.0, 1.0)
 
-        self._gate = SafetyGate(
-            watchdog_timeout_ms=self.watchdog_timeout_ms,
-            max_linear_mps=self.max_linear_mps,
-            max_linear_z_mps=self.max_linear_z_mps,
-            max_angular_rps=self.max_angular_rps,
-            default_mode=self.default_mode,
-        )
-
         self._lock = threading.Lock()
+        self._latest_twist = Twist()
+        self._current_mode: int = self.default_mode
         self._last_cmd_received_ms: Optional[int] = None
         self._last_seq: int = 0
         self._connected: bool = False
@@ -130,16 +124,7 @@ class TabletInterfaceNode(Node):
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
         self.get_logger().info("Tablet interface node initialized")
-        self.get_logger().info(
-            "Safety params: watchdog_timeout_ms={0} max_linear_mps={1:.3f} "
-            "max_linear_z_mps={2:.3f} max_angular_rps={3:.3f} default_mode={4}".format(
-                self.watchdog_timeout_ms,
-                self.max_linear_mps,
-                self.max_linear_z_mps,
-                self.max_angular_rps,
-                self.default_mode,
-            )
-        )
+        self.get_logger().info("SafetyGate disabled for debug: raw mapped command forwarding")
         self.get_logger().info(
             "WS params: bind_host={0} bind_port={1} ws_path={2} state_publish_hz={3:.1f}".format(
                 self.bind_host,
@@ -228,15 +213,9 @@ class TabletInterfaceNode(Node):
         if not self.accept_mode_from_client:
             mode = self.default_mode
 
-        cmd = TeleopCmd(
-            twist=twist,
-            mode=int(mode),
-            seq=int(seq),
-            received_ms=int(received_ms),
-        )
-
         with self._lock:
-            self._gate.update_cmd(cmd)
+            self._latest_twist = self._copy_twist(twist)
+            self._current_mode = int(mode)
             self._last_cmd_received_ms = int(received_ms)
             self._last_seq = int(seq)
 
@@ -359,23 +338,34 @@ class TabletInterfaceNode(Node):
             return {
                 "connected": self._connected,
                 "cmd_age_ms": cmd_age_ms,
-                "watchdog_timeout_ms": self.watchdog_timeout_ms,
+                "watchdog_timeout_ms": 0,
                 "last_seq": self._last_seq,
                 "publishing_rate_hz": float(self.publish_rate_hz),
-                "current_mode": int(self._gate._last_mode),
+                "current_mode": int(self._current_mode),
                 "events": list(self._last_events),
             }
 
     def _on_timer(self) -> None:
-        now_ms = self._now_ms()
         with self._lock:
-            twist, mode, events = self._gate.process(now_ms=now_ms)
-            self._last_events = list(events)
+            twist = self._copy_twist(self._latest_twist)
+            mode = int(self._current_mode)
+            self._last_events = []
 
         msg = TeleopCommand()
         msg.twist = twist
         msg.mode = int(mode)
         self._publisher.publish(msg)
+
+    @staticmethod
+    def _copy_twist(twist: Twist) -> Twist:
+        out = Twist()
+        out.linear.x = float(twist.linear.x)
+        out.linear.y = float(twist.linear.y)
+        out.linear.z = float(twist.linear.z)
+        out.angular.x = float(twist.angular.x)
+        out.angular.y = float(twist.angular.y)
+        out.angular.z = float(twist.angular.z)
+        return out
 
     def _now_ms(self) -> int:
         return int(self.get_clock().now().nanoseconds / 1_000_000)
