@@ -8,7 +8,7 @@ from rclpy.node import Node
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from geometry_msgs.msg import Twist
-from std_msgs.msg import Float32MultiArray, String
+from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
 
@@ -37,6 +37,9 @@ class TabletInterfaceNode(Node):
         self.declare_parameter(
             "state_machine_topic", "/petanque_state_machine/change_state"
         )
+        self.declare_parameter("gripper_topic", "/gripper_controller/commands")
+        self.declare_parameter("gripper_open_position", 0.0)
+        self.declare_parameter("gripper_close_position", 1.05)
         self.declare_parameter("hub_digital_output_topic", "/hub/digital_output")
         self.declare_parameter("hub_electromagnet_channel", 2.0)
         self.declare_parameter("petanque_param_service", "/petanque_throw/set_parameters")
@@ -63,6 +66,13 @@ class TabletInterfaceNode(Node):
         self.bind_port = int(self.get_parameter("bind_port").value)
         self.ws_path = str(self.get_parameter("ws_path").value)
         self.state_machine_topic = str(self.get_parameter("state_machine_topic").value)
+        self.gripper_topic = str(self.get_parameter("gripper_topic").value)
+        self.gripper_open_position = float(
+            self.get_parameter("gripper_open_position").value
+        )
+        self.gripper_close_position = float(
+            self.get_parameter("gripper_close_position").value
+        )
         self.hub_digital_output_topic = str(
             self.get_parameter("hub_digital_output_topic").value
         )
@@ -106,6 +116,9 @@ class TabletInterfaceNode(Node):
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
             String, self.state_machine_topic, 10
+        )
+        self._gripper_publisher = self.create_publisher(
+            Float64MultiArray, self.gripper_topic, 10
         )
         self._hub_digital_output_publisher = self.create_publisher(
             Float32MultiArray, self.hub_digital_output_topic, 10
@@ -155,6 +168,13 @@ class TabletInterfaceNode(Node):
                 self.petanque_param_service,
                 self.petanque_total_duration_param,
                 self.petanque_angle_between_start_and_finish_param,
+            )
+        )
+        self.get_logger().info(
+            "Gripper bridge: topic={0} open={1:.3f} close={2:.3f}".format(
+                self.gripper_topic,
+                self.gripper_open_position,
+                self.gripper_close_position,
             )
         )
         self.get_logger().info(
@@ -230,11 +250,36 @@ class TabletInterfaceNode(Node):
         self.get_logger().info(f"Published state machine command: {normalized}")
         return True
 
+    def set_gripper(self, action: str) -> bool:
+        normalized = action.strip().lower()
+        if normalized not in {"open", "close"}:
+            self.get_logger().warning(f"Invalid gripper action: {action}")
+            return False
+
+        position = (
+            self.gripper_open_position
+            if normalized == "open"
+            else self.gripper_close_position
+        )
+        msg = Float64MultiArray()
+        msg.data = [float(position)]
+        self._gripper_publisher.publish(msg)
+        self.get_logger().info(
+            "Published gripper command: action={0} topic={1} value={2:.3f}".format(
+                normalized,
+                self.gripper_topic,
+                position,
+            )
+        )
+        return True
+
     def set_electromagnet(self, enabled: bool) -> bool:
         msg = Float32MultiArray()
+        # Hardware wiring for the electromagnet is active-low:
+        # 0.0 => magnet ON, 1.0 => magnet OFF.
         msg.data = [
             float(self.hub_electromagnet_channel),
-            1.0 if enabled else 0.0,
+            0.0 if enabled else 1.0,
         ]
         self._hub_digital_output_publisher.publish(msg)
         self.get_logger().info(

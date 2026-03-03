@@ -4,6 +4,7 @@ from pydantic import ValidationError
 from tablet_interface.ws_models import (
     CmdMessage,
     EventMessage,
+    GripperCmdMessage,
     PetanqueConfigMessage,
     StateCmdMessage,
     StateMessage,
@@ -87,6 +88,43 @@ def test_state_cmd_invalid() -> None:
                 "command": "go_to_end",
             }
         )
+
+
+def test_gripper_cmd_valid() -> None:
+    payload = {
+        "type": "gripper_cmd",
+        "action": "open",
+        "speed": 0.8,
+        "force": 0.4,
+    }
+    msg = GripperCmdMessage.model_validate(payload)
+    assert msg.action == "open"
+    assert msg.speed == pytest.approx(0.8)
+    assert msg.force == pytest.approx(0.4)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "type": "gripper_cmd",
+            "action": "toggle",
+        },
+        {
+            "type": "gripper_cmd",
+            "action": "close",
+            "speed": 1.2,
+        },
+        {
+            "type": "gripper_cmd",
+            "action": "open",
+            "force": -0.1,
+        },
+    ],
+)
+def test_gripper_cmd_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        GripperCmdMessage.model_validate(payload)
 
 
 def test_petanque_cfg_valid() -> None:

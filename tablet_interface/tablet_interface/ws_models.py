@@ -24,6 +24,13 @@ class StateCmdMessage(BaseModel):
     command: Literal["teleop", "activate_throw", "go_to_start", "throw", "pick_up", "stop"]
 
 
+class GripperCmdMessage(BaseModel):
+    type: Literal["gripper_cmd"]
+    action: Literal["open", "close"]
+    speed: confloat(ge=0.0, le=1.0) | None = None
+    force: confloat(ge=0.0, le=1.0) | None = None
+
+
 class PetanqueConfigMessage(BaseModel):
     type: Literal["petanque_cfg"]
     total_duration: confloat(gt=0) | None = None
@@ -70,6 +77,7 @@ class EventMessage(BaseModel):
 __all__ = [
     "CmdMessage",
     "StateCmdMessage",
+    "GripperCmdMessage",
     "PetanqueConfigMessage",
     "UiButtonMessage",
     "StateMessage",
