@@ -67,6 +67,7 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                 "last_seq": state["last_seq"],
                 "publishing_rate_hz": state["publishing_rate_hz"],
                 "current_mode": state["current_mode"],
+                "gripper_state": state.get("gripper_state"),
             }
             await websocket.send_json(message)
 

@@ -112,6 +112,7 @@ class TabletInterfaceNode(Node):
         self._last_seq: int = 0
         self._connected: bool = False
         self._last_events: List[str] = []
+        self._gripper_state: str = "unknown"
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -122,6 +123,9 @@ class TabletInterfaceNode(Node):
         )
         self._hub_digital_output_publisher = self.create_publisher(
             Float32MultiArray, self.hub_digital_output_topic, 10
+        )
+        self._gripper_subscription = self.create_subscription(
+            Float64MultiArray, self.gripper_topic, self._on_gripper_command, 10
         )
         self._petanque_param_client = self.create_client(
             SetParameters, self.petanque_param_service
@@ -264,6 +268,8 @@ class TabletInterfaceNode(Node):
         msg = Float64MultiArray()
         msg.data = [float(position)]
         self._gripper_publisher.publish(msg)
+        with self._lock:
+            self._gripper_state = normalized
         self.get_logger().info(
             "Published gripper command: action={0} topic={1} value={2:.3f}".format(
                 normalized,
@@ -289,6 +295,18 @@ class TabletInterfaceNode(Node):
             )
         )
         return True
+
+    def _on_gripper_command(self, msg: Float64MultiArray) -> None:
+        if not msg.data:
+            return
+        self._set_gripper_state_from_position(float(msg.data[0]))
+
+    def _set_gripper_state_from_position(self, position: float) -> None:
+        open_distance = abs(position - float(self.gripper_open_position))
+        close_distance = abs(position - float(self.gripper_close_position))
+        state = "open" if open_distance <= close_distance else "close"
+        with self._lock:
+            self._gripper_state = state
 
     def set_petanque_total_duration(self, total_duration: float) -> bool:
         if total_duration <= 0.0:
@@ -379,6 +397,7 @@ class TabletInterfaceNode(Node):
                 "last_seq": self._last_seq,
                 "publishing_rate_hz": float(self.publish_rate_hz),
                 "current_mode": int(self._current_mode),
+                "gripper_state": self._gripper_state,
                 "events": list(self._last_events),
             }
 
