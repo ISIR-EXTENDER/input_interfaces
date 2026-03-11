@@ -23,7 +23,15 @@ class CmdMessage(BaseModel):
 
 class StateCmdMessage(BaseModel):
     type: Literal["state_cmd"]
-    command: Literal["teleop", "activate_throw", "go_to_start", "throw", "pick_up", "stop"]
+    command: Literal[
+        "teleop",
+        "activate_throw",
+        "go_to_start",
+        "throw",
+        "pick_up",
+        "stop",
+        "test_loop",
+    ]
 
 
 class GripperCmdMessage(BaseModel):
@@ -37,16 +45,18 @@ class PetanqueConfigMessage(BaseModel):
     type: Literal["petanque_cfg"]
     total_duration: confloat(gt=0) | None = None
     angle_between_start_and_finish: float | None = None
+    alpha: confloat(ge=0.0, le=40.0) | None = None
 
     @model_validator(mode="after")
     def _validate_has_payload(self) -> "PetanqueConfigMessage":
         if (
             self.total_duration is None
             and self.angle_between_start_and_finish is None
+            and self.alpha is None
         ):
             raise ValueError(
                 "petanque_cfg requires at least one field: total_duration or "
-                "angle_between_start_and_finish"
+                "angle_between_start_and_finish or alpha"
             )
         return self
 
@@ -56,6 +66,28 @@ class UiButtonMessage(BaseModel):
     topic: str = Field(min_length=1)
     payload: str = Field(min_length=1)
     widget_id: str | None = None
+
+
+class MeasureRequestMessage(BaseModel):
+    type: Literal["measure_request"]
+    image_data_url: str = Field(min_length=32)
+
+    @model_validator(mode="after")
+    def _validate_image_data_url(self) -> "MeasureRequestMessage":
+        if not self.image_data_url.startswith("data:image/"):
+            raise ValueError("measure_request image_data_url must start with data:image/")
+        return self
+
+
+class MeasureRefreshMessage(BaseModel):
+    type: Literal["measure_refresh"]
+
+
+class MeasureResultMessage(BaseModel):
+    type: Literal["measure_result"]
+    image_data_url: str | None = None
+    vectors_json: str | None = None
+    updated_at_ms: conint(strict=True, ge=0) | None = None
 
 
 class StateMessage(BaseModel):
@@ -82,6 +114,9 @@ __all__ = [
     "GripperCmdMessage",
     "PetanqueConfigMessage",
     "UiButtonMessage",
+    "MeasureRequestMessage",
+    "MeasureRefreshMessage",
+    "MeasureResultMessage",
     "StateMessage",
     "EventMessage",
     "Vector3Model",

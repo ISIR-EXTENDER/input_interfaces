@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import threading
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -27,6 +30,13 @@ try:
     import cv2
 except Exception:  # pragma: no cover
     cv2 = None  # type: ignore
+MEASURE_DEMO_VECTORS_JSON = json.dumps(
+    {
+        "source": "image_measures_demo",
+        "distances_cm": [27.9],
+    },
+    separators=(",", ":"),
+)
 
 
 class TabletInterfaceNode(Node):
@@ -52,8 +62,8 @@ class TabletInterfaceNode(Node):
             "state_machine_topic", "/petanque_state_machine/change_state"
         )
         self.declare_parameter("gripper_topic", "/gripper_controller/commands")
-        self.declare_parameter("gripper_open_position", 0.0)
-        self.declare_parameter("gripper_close_position", 1.05)
+        self.declare_parameter("gripper_open_position", 0.2)
+        self.declare_parameter("gripper_close_position", 1.1)
         self.declare_parameter("hub_digital_output_topic", "/hub/digital_output")
         self.declare_parameter("hub_electromagnet_channel", 2.0)
         self.declare_parameter("petanque_param_service", "/petanque_throw/set_parameters")
@@ -61,6 +71,16 @@ class TabletInterfaceNode(Node):
         self.declare_parameter(
             "petanque_angle_between_start_and_finish_param",
             "angle_between_start_and_finish",
+        )
+        self.declare_parameter("petanque_alpha_param", "alpha")
+        self.declare_parameter(
+            "measure_request_image_topic", "/petanque/measure/request_image/compressed"
+        )
+        self.declare_parameter(
+            "measure_result_image_topic", "/petanque/measure/result_image/compressed"
+        )
+        self.declare_parameter(
+            "measure_result_vectors_topic", "/petanque/measure/result_vectors"
         )
         self.declare_parameter("param_call_timeout_sec", 1.5)
         self.declare_parameter("petanque_measurements_enabled", False)
@@ -130,6 +150,18 @@ class TabletInterfaceNode(Node):
         )
         self.petanque_angle_between_start_and_finish_param = str(
             self.get_parameter("petanque_angle_between_start_and_finish_param").value
+        )
+        self.petanque_alpha_param = str(
+            self.get_parameter("petanque_alpha_param").value
+        )
+        self.measure_request_image_topic = str(
+            self.get_parameter("measure_request_image_topic").value
+        )
+        self.measure_result_image_topic = str(
+            self.get_parameter("measure_result_image_topic").value
+        )
+        self.measure_result_vectors_topic = str(
+            self.get_parameter("measure_result_vectors_topic").value
         )
         self.param_call_timeout_sec = float(self.get_parameter("param_call_timeout_sec").value)
         self.petanque_measurements_enabled = bool(
@@ -222,6 +254,14 @@ class TabletInterfaceNode(Node):
         self._petanque_processor: Optional[PetanqueMeasurements] = None
         self._petanque_latest_image_msg: Optional[CompressedImage] = None
         self._petanque_latest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
+        self._measure_result_image_data_url: str | None = None
+        self._measure_result_vectors_json: str | None = None
+        self._measure_result_updated_at_ms: int | None = None
+        self._measure_result_revision: int = 0
+        self._measure_demo_vectors_json: str = MEASURE_DEMO_VECTORS_JSON
+        self._measure_demo_image_data_url: str | None = (
+            self._load_default_measure_demo_image_data_url()
+        )
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -233,6 +273,9 @@ class TabletInterfaceNode(Node):
         self._hub_digital_output_publisher = self.create_publisher(
             Float32MultiArray, self.hub_digital_output_topic, 10
         )
+        self._measure_request_image_publisher = self.create_publisher(
+            CompressedImage, self.measure_request_image_topic, 10
+        )
         self._petanque_overlay_publisher = self.create_publisher(
             CompressedImage, self.petanque_measurement_result_image_topic, 10
         )
@@ -241,6 +284,18 @@ class TabletInterfaceNode(Node):
         )
         self._gripper_subscription = self.create_subscription(
             Float64MultiArray, self.gripper_topic, self._on_gripper_command, 10
+        )
+        self._measure_result_image_subscription = self.create_subscription(
+            CompressedImage,
+            self.measure_result_image_topic,
+            self._on_measure_result_image,
+            10,
+        )
+        self._measure_result_vectors_subscription = self.create_subscription(
+            String,
+            self.measure_result_vectors_topic,
+            self._on_measure_result_vectors,
+            10,
         )
         self._petanque_image_subscription = self.create_subscription(
             CompressedImage,
@@ -319,11 +374,12 @@ class TabletInterfaceNode(Node):
         )
         self.get_logger().info(
             "Petanque bridge: state_machine_topic={0} param_service={1} "
-            "duration_param={2} angle_param={3}".format(
+            "duration_param={2} angle_param={3} alpha_param={4}".format(
                 self.state_machine_topic,
                 self.petanque_param_service,
                 self.petanque_total_duration_param,
                 self.petanque_angle_between_start_and_finish_param,
+                self.petanque_alpha_param,
             )
         )
         self.get_logger().info(
@@ -337,6 +393,13 @@ class TabletInterfaceNode(Node):
             "Hub bridge: digital_output_topic={0} electromagnet_channel={1:.1f}".format(
                 self.hub_digital_output_topic,
                 self.hub_electromagnet_channel,
+            )
+        )
+        self.get_logger().info(
+            "Measure bridge: request_image_topic={0} result_image_topic={1} vectors_topic={2}".format(
+                self.measure_request_image_topic,
+                self.measure_result_image_topic,
+                self.measure_result_vectors_topic,
             )
         )
         self.get_logger().info(
@@ -411,6 +474,7 @@ class TabletInterfaceNode(Node):
             "throw",
             "pick_up",
             "stop",
+            "test_loop",
         }:
             self.get_logger().warning(f"Invalid state machine command: {command}")
             return False
@@ -568,6 +632,154 @@ class TabletInterfaceNode(Node):
             parameter_name=self.petanque_angle_between_start_and_finish_param,
             value=float(angle),
         )
+
+    def set_petanque_alpha(self, alpha: float) -> bool:
+        if alpha < 0.0 or alpha > 40.0:
+            self.get_logger().warning(
+                f"Invalid alpha={alpha:.3f}; expected in [0, 40]"
+            )
+            return False
+
+        return self._set_petanque_double_parameter(
+            parameter_name=self.petanque_alpha_param,
+            value=float(alpha),
+        )
+
+    def publish_measure_request_image(self, image_data_url: str) -> bool:
+        decoded = self._decode_image_data_url(image_data_url)
+        if decoded is None:
+            self.get_logger().warning("Invalid measure image_data_url payload")
+            return False
+
+        image_format, image_bytes = decoded
+        msg = CompressedImage()
+        msg.format = image_format
+        msg.data = image_bytes
+        self._measure_request_image_publisher.publish(msg)
+        self.get_logger().info(
+            "Published measure request image: topic={0} format={1} bytes={2}".format(
+                self.measure_request_image_topic,
+                image_format,
+                len(image_bytes),
+            )
+        )
+        return True
+
+    def get_measure_result_snapshot(self) -> Dict[str, object]:
+        with self._lock:
+            image_data_url = self._measure_result_image_data_url
+            vectors_json = self._measure_result_vectors_json
+            updated_at_ms = self._measure_result_updated_at_ms
+            if (
+                self._is_legacy_fake_measure_vectors(vectors_json)
+                and self._measure_demo_image_data_url is not None
+            ):
+                image_data_url = self._measure_demo_image_data_url
+                vectors_json = self._measure_demo_vectors_json
+                updated_at_ms = None
+            return {
+                "revision": int(self._measure_result_revision),
+                "image_data_url": image_data_url,
+                "vectors_json": vectors_json,
+                "updated_at_ms": updated_at_ms,
+            }
+
+    def _on_measure_result_image(self, msg: CompressedImage) -> None:
+        image_data_url = self._encode_compressed_image_data_url(msg)
+        if not image_data_url:
+            self.get_logger().warning("Received empty measure result image")
+            return
+
+        now_ms = self._now_ms()
+        with self._lock:
+            self._measure_result_image_data_url = image_data_url
+            self._measure_result_updated_at_ms = now_ms
+            self._measure_result_revision += 1
+
+        self.get_logger().info(
+            "Received measure result image: topic={0} format={1} bytes={2}".format(
+                self.measure_result_image_topic,
+                msg.format or "jpeg",
+                len(msg.data),
+            )
+        )
+
+    def _on_measure_result_vectors(self, msg: String) -> None:
+        now_ms = self._now_ms()
+        with self._lock:
+            self._measure_result_vectors_json = msg.data
+            self._measure_result_updated_at_ms = now_ms
+            self._measure_result_revision += 1
+
+        self.get_logger().info(
+            "Received measure vectors: topic={0} chars={1}".format(
+                self.measure_result_vectors_topic,
+                len(msg.data),
+            )
+        )
+
+    def _decode_image_data_url(self, image_data_url: str) -> tuple[str, bytes] | None:
+        raw = image_data_url.strip()
+        if not raw.startswith("data:image/"):
+            return None
+        header, separator, payload = raw.partition(",")
+        if separator != ",":
+            return None
+        if ";base64" not in header:
+            return None
+        mime = header[len("data:") : header.index(";base64")]
+        image_format = mime.split("/")[-1] or "jpeg"
+        try:
+            image_bytes = base64.b64decode(payload, validate=True)
+        except (binascii.Error, ValueError):
+            return None
+        if not image_bytes:
+            return None
+        return image_format, image_bytes
+
+    def _encode_compressed_image_data_url(self, msg: CompressedImage) -> str:
+        if not msg.data:
+            return ""
+        image_format = (msg.format or "jpeg").strip().lower()
+        if "/" in image_format:
+            image_format = image_format.split("/")[-1]
+        if image_format == "jpg":
+            image_format = "jpeg"
+        encoded = base64.b64encode(bytes(msg.data)).decode("ascii")
+        return f"data:image/{image_format};base64,{encoded}"
+
+    def _load_default_measure_demo_image_data_url(self) -> str | None:
+        repo_root = Path(__file__).resolve().parents[2]
+        demo_image_path = repo_root / "extender_ui" / "src" / "assets" / "image_measures.png"
+        if not demo_image_path.is_file():
+            self.get_logger().warning(
+                f"Measure demo image not found: {demo_image_path}"
+            )
+            return None
+        try:
+            image_bytes = demo_image_path.read_bytes()
+        except OSError as exc:
+            self.get_logger().warning(
+                f"Failed to read measure demo image {demo_image_path}: {exc}"
+            )
+            return None
+        if not image_bytes:
+            self.get_logger().warning(
+                f"Measure demo image is empty: {demo_image_path}"
+            )
+            return None
+        encoded = base64.b64encode(image_bytes).decode("ascii")
+        return f"data:image/png;base64,{encoded}"
+
+    def _is_legacy_fake_measure_vectors(self, vectors_json: str | None) -> bool:
+        if not vectors_json:
+            return False
+        try:
+            parsed = json.loads(vectors_json)
+        except json.JSONDecodeError:
+            return False
+        source = parsed.get("source") if isinstance(parsed, dict) else None
+        return isinstance(source, str) and source.startswith("fake_opencv")
 
     def _set_petanque_double_parameter(self, *, parameter_name: str, value: float) -> bool:
         if not parameter_name:

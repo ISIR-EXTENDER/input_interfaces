@@ -5,6 +5,9 @@ from tablet_interface.ws_models import (
     CmdMessage,
     EventMessage,
     GripperCmdMessage,
+    MeasureRefreshMessage,
+    MeasureRequestMessage,
+    MeasureResultMessage,
     PetanqueConfigMessage,
     StateCmdMessage,
     StateMessage,
@@ -135,6 +138,7 @@ def test_petanque_cfg_valid() -> None:
     msg = PetanqueConfigMessage.model_validate(payload)
     assert msg.total_duration == pytest.approx(1.25)
     assert msg.angle_between_start_and_finish is None
+    assert msg.alpha is None
 
 
 def test_petanque_cfg_angle_valid() -> None:
@@ -145,6 +149,18 @@ def test_petanque_cfg_angle_valid() -> None:
     msg = PetanqueConfigMessage.model_validate(payload)
     assert msg.total_duration is None
     assert msg.angle_between_start_and_finish == pytest.approx(0.7)
+    assert msg.alpha is None
+
+
+def test_petanque_cfg_alpha_valid() -> None:
+    payload = {
+        "type": "petanque_cfg",
+        "alpha": 20.0,
+    }
+    msg = PetanqueConfigMessage.model_validate(payload)
+    assert msg.total_duration is None
+    assert msg.angle_between_start_and_finish is None
+    assert msg.alpha == pytest.approx(20.0)
 
 
 def test_petanque_cfg_both_fields_valid() -> None:
@@ -152,10 +168,12 @@ def test_petanque_cfg_both_fields_valid() -> None:
         "type": "petanque_cfg",
         "total_duration": 1.2,
         "angle_between_start_and_finish": 0.4,
+        "alpha": 3.5,
     }
     msg = PetanqueConfigMessage.model_validate(payload)
     assert msg.total_duration == pytest.approx(1.2)
     assert msg.angle_between_start_and_finish == pytest.approx(0.4)
+    assert msg.alpha == pytest.approx(3.5)
 
 
 def test_petanque_cfg_invalid() -> None:
@@ -164,6 +182,14 @@ def test_petanque_cfg_invalid() -> None:
             {
                 "type": "petanque_cfg",
                 "total_duration": 0,
+            }
+        )
+
+    with pytest.raises(ValidationError):
+        PetanqueConfigMessage.model_validate(
+            {
+                "type": "petanque_cfg",
+                "alpha": 20.5,
             }
         )
 
@@ -195,6 +221,45 @@ def test_ui_button_invalid() -> None:
                 "payload": "throw",
             }
         )
+
+
+def test_measure_request_valid() -> None:
+    payload = {
+        "type": "measure_request",
+        "image_data_url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==",
+    }
+    msg = MeasureRequestMessage.model_validate(payload)
+    assert msg.type == "measure_request"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"type": "measure_request", "image_data_url": "abc"},
+        {"type": "measure_request", "image_data_url": "data:text/plain;base64,QQ=="},
+    ],
+)
+def test_measure_request_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        MeasureRequestMessage.model_validate(payload)
+
+
+def test_measure_refresh_valid() -> None:
+    payload = {"type": "measure_refresh"}
+    msg = MeasureRefreshMessage.model_validate(payload)
+    assert msg.type == "measure_refresh"
+
+
+def test_measure_result_valid() -> None:
+    payload = {
+        "type": "measure_result",
+        "image_data_url": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2w==",
+        "vectors_json": "{\"distances\":[0.6]}",
+        "updated_at_ms": 12345,
+    }
+    msg = MeasureResultMessage.model_validate(payload)
+    assert msg.updated_at_ms == 12345
+    assert msg.vectors_json == "{\"distances\":[0.6]}"
 
 
 def test_state_message_valid() -> None:
