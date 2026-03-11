@@ -25,3 +25,25 @@ tablet_interface_node:
     petanque_total_duration_param: "total_duration"
     petanque_angle_between_start_and_finish_param: "angle_between_start_and_finish"
     param_call_timeout_sec: 1.5
+    petanque_measurements_enabled: false
+    petanque_measurement_request_image_topic: "/petanque/measure/request_image/compressed"
+    petanque_measurement_points_topic: "/petanque_measurements/points"
+    petanque_measurement_result_image_topic: "/petanque/measure/result_image/compressed"
+    petanque_measurement_result_vectors_topic: "/petanque/measure/result_vectors"
+    petanque_sphere_diameter_m: 0.073
+    petanque_click_to_circle_threshold_px: 525.0
+    petanque_click_search_margin_px: 180.0
+    petanque_max_candidate_spheres: 20
+    petanque_intrinsics_mode: "image"
+    petanque_assumed_hfov_deg: 69.0
+    petanque_camera_fx: 600.0
+    petanque_camera_fy: 600.0
+    petanque_camera_cx: 320.0
+    petanque_camera_cy: 240.0
+    petanque_blur_kernel_size: 5
+    petanque_hough_dp: 1.0
+    petanque_hough_min_dist_px: 150.0
+    petanque_hough_param1: 80.0
+    petanque_hough_param2: 40.0
+    petanque_min_radius_px: 30
+    petanque_max_radius_px: 200

@@ -1,18 +1,32 @@
 from __future__ import annotations
 
+import json
 import threading
 from typing import Dict, List, Optional, Tuple
 
+import numpy as np
 import rclpy
 from rclpy.node import Node
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from geometry_msgs.msg import Twist
+from sensor_msgs.msg import CompressedImage, Image
 from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
 
+from tablet_interface.petanque_measurements import (
+    CameraIntrinsics,
+    CircleDetectionConfig,
+    MeasurementConfig,
+    PetanqueMeasurements,
+)
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
+
+try:
+    import cv2
+except Exception:  # pragma: no cover
+    cv2 = None  # type: ignore
 
 
 class TabletInterfaceNode(Node):
@@ -49,6 +63,37 @@ class TabletInterfaceNode(Node):
             "angle_between_start_and_finish",
         )
         self.declare_parameter("param_call_timeout_sec", 1.5)
+        self.declare_parameter("petanque_measurements_enabled", False)
+        self.declare_parameter(
+            "petanque_measurement_request_image_topic",
+            "/petanque/measure/request_image/compressed",
+        )
+        self.declare_parameter("petanque_measurement_points_topic", "/petanque_measurements/points")
+        self.declare_parameter(
+            "petanque_measurement_result_image_topic",
+            "/petanque/measure/result_image/compressed",
+        )
+        self.declare_parameter(
+            "petanque_measurement_result_vectors_topic",
+            "/petanque/measure/result_vectors",
+        )
+        self.declare_parameter("petanque_sphere_diameter_m", 0.073)
+        self.declare_parameter("petanque_click_to_circle_threshold_px", 525.0)
+        self.declare_parameter("petanque_click_search_margin_px", 180.0)
+        self.declare_parameter("petanque_max_candidate_spheres", 20)
+        self.declare_parameter("petanque_intrinsics_mode", "image")
+        self.declare_parameter("petanque_assumed_hfov_deg", 69.0)
+        self.declare_parameter("petanque_camera_fx", 600.0)
+        self.declare_parameter("petanque_camera_fy", 600.0)
+        self.declare_parameter("petanque_camera_cx", 320.0)
+        self.declare_parameter("petanque_camera_cy", 240.0)
+        self.declare_parameter("petanque_blur_kernel_size", 5)
+        self.declare_parameter("petanque_hough_dp", 1.)
+        self.declare_parameter("petanque_hough_min_dist_px", 150.0)
+        self.declare_parameter("petanque_hough_param1", 80.0)
+        self.declare_parameter("petanque_hough_param2", 40.0)
+        self.declare_parameter("petanque_min_radius_px", 30)
+        self.declare_parameter("petanque_max_radius_px", 200)
 
         self.teleop_cmd_topic = self.get_parameter("teleop_cmd_topic").value
         self.publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
@@ -87,6 +132,67 @@ class TabletInterfaceNode(Node):
             self.get_parameter("petanque_angle_between_start_and_finish_param").value
         )
         self.param_call_timeout_sec = float(self.get_parameter("param_call_timeout_sec").value)
+        self.petanque_measurements_enabled = bool(
+            self.get_parameter("petanque_measurements_enabled").value
+        )
+        self.petanque_measurement_request_image_topic = str(
+            self.get_parameter("petanque_measurement_request_image_topic").value
+        )
+        self.petanque_measurement_points_topic = str(
+            self.get_parameter("petanque_measurement_points_topic").value
+        )
+        self.petanque_measurement_result_image_topic = str(
+            self.get_parameter("petanque_measurement_result_image_topic").value
+        )
+        self.petanque_measurement_result_vectors_topic = str(
+            self.get_parameter("petanque_measurement_result_vectors_topic").value
+        )
+        self.petanque_sphere_diameter_m = float(
+            self.get_parameter("petanque_sphere_diameter_m").value
+        )
+        self.petanque_click_to_circle_threshold_px = float(
+            self.get_parameter("petanque_click_to_circle_threshold_px").value
+        )
+        self.petanque_click_search_margin_px = float(
+            self.get_parameter("petanque_click_search_margin_px").value
+        )
+        self.petanque_max_candidate_spheres = int(
+            self.get_parameter("petanque_max_candidate_spheres").value
+        )
+        self.petanque_intrinsics_mode = str(
+            self.get_parameter("petanque_intrinsics_mode").value
+        ).strip().lower()
+        if self.petanque_intrinsics_mode not in {"image", "fixed"}:
+            self.get_logger().warning(
+                f"Invalid petanque_intrinsics_mode={self.petanque_intrinsics_mode}, using image"
+            )
+            self.petanque_intrinsics_mode = "image"
+        self.petanque_assumed_hfov_deg = float(
+            self.get_parameter("petanque_assumed_hfov_deg").value
+        )
+        self.petanque_camera_fx = float(self.get_parameter("petanque_camera_fx").value)
+        self.petanque_camera_fy = float(self.get_parameter("petanque_camera_fy").value)
+        self.petanque_camera_cx = float(self.get_parameter("petanque_camera_cx").value)
+        self.petanque_camera_cy = float(self.get_parameter("petanque_camera_cy").value)
+        self.petanque_blur_kernel_size = int(
+            self.get_parameter("petanque_blur_kernel_size").value
+        )
+        self.petanque_hough_dp = float(self.get_parameter("petanque_hough_dp").value)
+        self.petanque_hough_min_dist_px = float(
+            self.get_parameter("petanque_hough_min_dist_px").value
+        )
+        self.petanque_hough_param1 = float(
+            self.get_parameter("petanque_hough_param1").value
+        )
+        self.petanque_hough_param2 = float(
+            self.get_parameter("petanque_hough_param2").value
+        )
+        self.petanque_min_radius_px = int(
+            self.get_parameter("petanque_min_radius_px").value
+        )
+        self.petanque_max_radius_px = int(
+            self.get_parameter("petanque_max_radius_px").value
+        )
         try:
             self.linear_axes, self.linear_signs = normalize_mapping(
                 axes=linear_axes_param,
@@ -113,6 +219,9 @@ class TabletInterfaceNode(Node):
         self._connected: bool = False
         self._last_events: List[str] = []
         self._gripper_state: str = "unknown"
+        self._petanque_processor: Optional[PetanqueMeasurements] = None
+        self._petanque_latest_image_msg: Optional[CompressedImage] = None
+        self._petanque_latest_points: Optional[Tuple[Tuple[float, float], Tuple[float, float]]] = None
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -124,13 +233,56 @@ class TabletInterfaceNode(Node):
         self._hub_digital_output_publisher = self.create_publisher(
             Float32MultiArray, self.hub_digital_output_topic, 10
         )
+        self._petanque_overlay_publisher = self.create_publisher(
+            CompressedImage, self.petanque_measurement_result_image_topic, 10
+        )
+        self._petanque_vectors_publisher = self.create_publisher(
+            String, self.petanque_measurement_result_vectors_topic, 10
+        )
         self._gripper_subscription = self.create_subscription(
             Float64MultiArray, self.gripper_topic, self._on_gripper_command, 10
+        )
+        self._petanque_image_subscription = self.create_subscription(
+            CompressedImage,
+            self.petanque_measurement_request_image_topic,
+            self._on_petanque_image,
+            10,
+        )
+        self._petanque_points_subscription = self.create_subscription(
+            Float32MultiArray,
+            self.petanque_measurement_points_topic,
+            self._on_petanque_points,
+            10,
         )
         self._petanque_param_client = self.create_client(
             SetParameters, self.petanque_param_service
         )
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
+
+        if self.petanque_measurements_enabled:
+            self._petanque_processor = PetanqueMeasurements(
+                intrinsics=CameraIntrinsics(
+                    fx=self.petanque_camera_fx,
+                    fy=self.petanque_camera_fy,
+                    cx=self.petanque_camera_cx,
+                    cy=self.petanque_camera_cy,
+                ),
+                detection_config=CircleDetectionConfig(
+                    blur_kernel_size=self.petanque_blur_kernel_size,
+                    hough_dp=self.petanque_hough_dp,
+                    hough_min_dist_px=self.petanque_hough_min_dist_px,
+                    hough_param1=self.petanque_hough_param1,
+                    hough_param2=self.petanque_hough_param2,
+                    min_radius_px=self.petanque_min_radius_px,
+                    max_radius_px=self.petanque_max_radius_px,
+                ),
+                measurement_config=MeasurementConfig(
+                    sphere_diameter_m=self.petanque_sphere_diameter_m,
+                    click_to_circle_threshold_px=self.petanque_click_to_circle_threshold_px,
+                    click_search_margin_px=self.petanque_click_search_margin_px,
+                    max_candidate_spheres=self.petanque_max_candidate_spheres,
+                ),
+            )
 
         self.get_logger().info("Tablet interface node initialized")
         self.get_logger().info("SafetyGate disabled for debug: raw mapped command forwarding")
@@ -185,6 +337,21 @@ class TabletInterfaceNode(Node):
             "Hub bridge: digital_output_topic={0} electromagnet_channel={1:.1f}".format(
                 self.hub_digital_output_topic,
                 self.hub_electromagnet_channel,
+            )
+        )
+        self.get_logger().info(
+            "Petanque measurements: enabled={0} image_topic={1} points_topic={2} "
+            "result_image_topic={3} result_vectors_topic={4} sphere_diameter_m={5:.3f} "
+            "click_threshold_px={6:.1f} search_margin_px={7:.1f} max_candidates={8}".format(
+                str(self.petanque_measurements_enabled).lower(),
+                self.petanque_measurement_request_image_topic,
+                self.petanque_measurement_points_topic,
+                self.petanque_measurement_result_image_topic,
+                self.petanque_measurement_result_vectors_topic,
+                self.petanque_sphere_diameter_m,
+                self.petanque_click_to_circle_threshold_px,
+                self.petanque_click_search_margin_px,
+                self.petanque_max_candidate_spheres,
             )
         )
 
@@ -300,6 +467,82 @@ class TabletInterfaceNode(Node):
         if not msg.data:
             return
         self._set_gripper_state_from_position(float(msg.data[0]))
+
+    def _on_petanque_image(self, msg: CompressedImage) -> None:
+        if not self.petanque_measurements_enabled or self._petanque_processor is None:
+            return
+        with self._lock:
+            self._petanque_latest_image_msg = msg
+        self._run_petanque_measurement_if_ready()
+
+    def _on_petanque_points(self, msg: Float32MultiArray) -> None:
+        if not self.petanque_measurements_enabled or self._petanque_processor is None:
+            return
+        if len(msg.data) < 4:
+            self.get_logger().warning(
+                "Petanque points message must contain at least 4 values [x1, y1, x2, y2]"
+            )
+            return
+        points = (
+            (float(msg.data[0]), float(msg.data[1])),
+            (float(msg.data[2]), float(msg.data[3])),
+        )
+        with self._lock:
+            self._petanque_latest_points = points
+        self._run_petanque_measurement_if_ready()
+
+    def _run_petanque_measurement_if_ready(self) -> None:
+        if self._petanque_processor is None:
+            return
+
+        with self._lock:
+            image_msg = self._petanque_latest_image_msg
+            points = self._petanque_latest_points
+
+        if image_msg is None or points is None:
+            return
+
+        image_bgr = self._compressed_image_msg_to_bgr(image_msg)
+        if image_bgr is None:
+            return
+
+        self._update_petanque_intrinsics_from_frame(image_bgr)
+
+        result = self._petanque_processor.process(
+            image_bgr=image_bgr,
+            point_a_px=points[0],
+            point_b_px=points[1],
+        )
+
+        overlay_msg = self._bgr_to_compressed_image_msg(result.overlay_bgr, image_msg)
+        self._petanque_overlay_publisher.publish(overlay_msg)
+
+        vectors_payload: Dict[str, object] = {
+            "valid": bool(result.valid),
+            "message": str(result.message),
+            "point_a_px": [float(points[0][0]), float(points[0][1])],
+            "point_b_px": [float(points[1][0]), float(points[1][1])],
+            "distance_m": float(result.distance_m) if result.distance_m is not None else None,
+        }
+        if result.point_a_3d_m is not None:
+            vectors_payload["point_a_3d_m"] = [
+                float(result.point_a_3d_m[0]),
+                float(result.point_a_3d_m[1]),
+                float(result.point_a_3d_m[2]),
+            ]
+        if result.point_b_3d_m is not None:
+            vectors_payload["point_b_3d_m"] = [
+                float(result.point_b_3d_m[0]),
+                float(result.point_b_3d_m[1]),
+                float(result.point_b_3d_m[2]),
+            ]
+
+        vectors_msg = String()
+        vectors_msg.data = json.dumps(vectors_payload)
+        self._petanque_vectors_publisher.publish(vectors_msg)
+
+        if not result.valid:
+            self.get_logger().debug(f"Petanque measurement skipped: {result.message}")
 
     def _set_gripper_state_from_position(self, position: float) -> None:
         open_distance = abs(position - float(self.gripper_open_position))
@@ -425,6 +668,64 @@ class TabletInterfaceNode(Node):
 
     def _now_ms(self) -> int:
         return int(self.get_clock().now().nanoseconds / 1_000_000)
+
+    def _compressed_image_msg_to_bgr(self, msg: CompressedImage) -> Optional[np.ndarray]:
+        if cv2 is None:
+            self.get_logger().warning("opencv not available for compressed image decode")
+            return None
+
+        if not msg.data:
+            self.get_logger().warning(
+                "Petanque compressed image payload is empty"
+            )
+            return None
+
+        data = np.frombuffer(msg.data, dtype=np.uint8)
+        decoded = cv2.imdecode(data, cv2.IMREAD_COLOR)
+        if decoded is None:
+            self.get_logger().warning("Failed to decode petanque compressed image")
+            return None
+        return decoded
+
+    def _update_petanque_intrinsics_from_frame(self, image_bgr: np.ndarray) -> None:
+        if self._petanque_processor is None:
+            return
+        if self.petanque_intrinsics_mode == "fixed":
+            self._petanque_processor.set_intrinsics(
+                CameraIntrinsics(
+                    fx=self.petanque_camera_fx,
+                    fy=self.petanque_camera_fy,
+                    cx=self.petanque_camera_cx,
+                    cy=self.petanque_camera_cy,
+                )
+            )
+            return
+
+        intrinsics = PetanqueMeasurements.estimate_intrinsics_from_image(
+            image_width_px=int(image_bgr.shape[1]),
+            image_height_px=int(image_bgr.shape[0]),
+            assumed_hfov_deg=self.petanque_assumed_hfov_deg,
+        )
+        self._petanque_processor.set_intrinsics(intrinsics)
+
+    @staticmethod
+    def _bgr_to_compressed_image_msg(
+        image_bgr: np.ndarray,
+        source_msg: CompressedImage,
+    ) -> CompressedImage:
+        if cv2 is None:
+            out = CompressedImage()
+            out.header = source_msg.header
+            out.format = "jpeg"
+            out.data = b""
+            return out
+
+        ok, encoded = cv2.imencode(".jpg", image_bgr)
+        out = CompressedImage()
+        out.header = source_msg.header
+        out.format = "jpeg"
+        out.data = encoded.tobytes() if ok else b""
+        return out
 
 
 __all__ = ["TabletInterfaceNode"]
