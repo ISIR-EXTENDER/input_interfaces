@@ -13,7 +13,7 @@ from rclpy.node import Node
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from geometry_msgs.msg import Twist
-from sensor_msgs.msg import CompressedImage, Image
+from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
@@ -30,6 +30,7 @@ try:
     import cv2
 except Exception:  # pragma: no cover
     cv2 = None  # type: ignore
+
 MEASURE_DEMO_VECTORS_JSON = json.dumps(
     {
         "source": "image_measures_demo",
@@ -88,7 +89,9 @@ class TabletInterfaceNode(Node):
             "petanque_measurement_request_image_topic",
             "/petanque/measure/request_image/compressed",
         )
-        self.declare_parameter("petanque_measurement_points_topic", "/petanque_measurements/points")
+        self.declare_parameter(
+            "petanque_measurement_points_topic", "/petanque_measurements/points"
+        )
         self.declare_parameter(
             "petanque_measurement_result_image_topic",
             "/petanque/measure/result_image/compressed",
@@ -108,7 +111,7 @@ class TabletInterfaceNode(Node):
         self.declare_parameter("petanque_camera_cx", 320.0)
         self.declare_parameter("petanque_camera_cy", 240.0)
         self.declare_parameter("petanque_blur_kernel_size", 5)
-        self.declare_parameter("petanque_hough_dp", 1.)
+        self.declare_parameter("petanque_hough_dp", 1.0)
         self.declare_parameter("petanque_hough_min_dist_px", 150.0)
         self.declare_parameter("petanque_hough_param1", 80.0)
         self.declare_parameter("petanque_hough_param2", 40.0)
@@ -287,20 +290,14 @@ class TabletInterfaceNode(Node):
         )
         self._measure_result_image_subscription = self.create_subscription(
             CompressedImage,
-            self.measure_result_image_topic,
-            self._on_measure_result_image,
+            self.petanque_measurement_request_image_topic,
+            self._on_petanque_image,
             10,
         )
         self._measure_result_vectors_subscription = self.create_subscription(
             String,
             self.measure_result_vectors_topic,
             self._on_measure_result_vectors,
-            10,
-        )
-        self._petanque_image_subscription = self.create_subscription(
-            CompressedImage,
-            self.petanque_measurement_request_image_topic,
-            self._on_petanque_image,
             10,
         )
         self._petanque_points_subscription = self.create_subscription(
@@ -532,6 +529,13 @@ class TabletInterfaceNode(Node):
             return
         self._set_gripper_state_from_position(float(msg.data[0]))
 
+    def _set_gripper_state_from_position(self, position: float) -> None:
+        open_distance = abs(position - float(self.gripper_open_position))
+        close_distance = abs(position - float(self.gripper_close_position))
+        state = "open" if open_distance <= close_distance else "close"
+        with self._lock:
+            self._gripper_state = state
+
     def _on_petanque_image(self, msg: CompressedImage) -> None:
         if not self.petanque_measurements_enabled or self._petanque_processor is None:
             return
@@ -607,13 +611,6 @@ class TabletInterfaceNode(Node):
 
         if not result.valid:
             self.get_logger().debug(f"Petanque measurement skipped: {result.message}")
-
-    def _set_gripper_state_from_position(self, position: float) -> None:
-        open_distance = abs(position - float(self.gripper_open_position))
-        close_distance = abs(position - float(self.gripper_close_position))
-        state = "open" if open_distance <= close_distance else "close"
-        with self._lock:
-            self._gripper_state = state
 
     def set_petanque_total_duration(self, total_duration: float) -> bool:
         if total_duration <= 0.0:
@@ -887,9 +884,7 @@ class TabletInterfaceNode(Node):
             return None
 
         if not msg.data:
-            self.get_logger().warning(
-                "Petanque compressed image payload is empty"
-            )
+            self.get_logger().warning("Petanque compressed image payload is empty")
             return None
 
         data = np.frombuffer(msg.data, dtype=np.uint8)
