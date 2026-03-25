@@ -6,7 +6,6 @@ from typing import Dict, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
-from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from sensor_msgs.msg import CompressedImage
@@ -24,6 +23,7 @@ from tablet_interface.measure_codec import (
     encode_compressed_image_data_url,
     load_demo_measure_image_data_url,
 )
+from tablet_interface.petanque_bridge import PetanqueBridge
 from tablet_interface.runtime_state import TabletRuntimeState
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 
@@ -172,6 +172,18 @@ class TabletInterfaceNode(Node):
         self._petanque_param_client = self.create_client(
             SetParameters, self.petanque_param_service
         )
+        self._petanque_bridge = PetanqueBridge(
+            logger=self.get_logger(),
+            state_cmd_publisher=self._state_cmd_publisher,
+            param_client=self._petanque_param_client,
+            param_service=self.petanque_param_service,
+            total_duration_param=self.petanque_total_duration_param,
+            angle_between_start_and_finish_param=(
+                self.petanque_angle_between_start_and_finish_param
+            ),
+            alpha_param=self.petanque_alpha_param,
+            param_call_timeout_sec=self.param_call_timeout_sec,
+        )
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
         self.get_logger().info("Tablet interface node initialized")
@@ -295,24 +307,7 @@ class TabletInterfaceNode(Node):
         )
 
     def send_state_command(self, command: str) -> bool:
-        normalized = command.strip().lower()
-        if normalized not in {
-            "teleop",
-            "activate_throw",
-            "go_to_start",
-            "throw",
-            "pick_up",
-            "stop",
-            "test_loop",
-        }:
-            self.get_logger().warning(f"Invalid state machine command: {command}")
-            return False
-
-        msg = String()
-        msg.data = normalized
-        self._state_cmd_publisher.publish(msg)
-        self.get_logger().info(f"Published state machine command: {normalized}")
-        return True
+        return self._petanque_bridge.send_state_command(command)
 
     def set_gripper(self, action: str) -> bool:
         normalized = action.strip().lower()
@@ -388,34 +383,13 @@ class TabletInterfaceNode(Node):
         self._runtime_state.update_gripper_position(position)
 
     def set_petanque_total_duration(self, total_duration: float) -> bool:
-        if total_duration <= 0.0:
-            self.get_logger().warning(
-                f"Invalid total_duration={total_duration:.3f}; expected > 0"
-            )
-            return False
-
-        return self._set_petanque_double_parameter(
-            parameter_name=self.petanque_total_duration_param,
-            value=float(total_duration),
-        )
+        return self._petanque_bridge.set_total_duration(total_duration)
 
     def set_petanque_angle_between_start_and_finish(self, angle: float) -> bool:
-        return self._set_petanque_double_parameter(
-            parameter_name=self.petanque_angle_between_start_and_finish_param,
-            value=float(angle),
-        )
+        return self._petanque_bridge.set_angle_between_start_and_finish(angle)
 
     def set_petanque_alpha(self, alpha: float) -> bool:
-        if alpha < 0.0 or alpha > 40.0:
-            self.get_logger().warning(
-                f"Invalid alpha={alpha:.3f}; expected in [0, 40]"
-            )
-            return False
-
-        return self._set_petanque_double_parameter(
-            parameter_name=self.petanque_alpha_param,
-            value=float(alpha),
-        )
+        return self._petanque_bridge.set_alpha(alpha)
 
     def publish_measure_request_image(self, image_data_url: str) -> bool:
         decoded = decode_image_data_url(image_data_url)
@@ -490,59 +464,6 @@ class TabletInterfaceNode(Node):
 
     def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
         self._runtime_state.update_joint_positions([float(value) for value in msg.data])
-
-    def _set_petanque_double_parameter(self, *, parameter_name: str, value: float) -> bool:
-        if not parameter_name:
-            self.get_logger().warning("Petanque parameter name is empty")
-            return False
-
-        if not self._petanque_param_client.wait_for_service(
-            timeout_sec=self.param_call_timeout_sec
-        ):
-            self.get_logger().warning(
-                f"Service unavailable: {self.petanque_param_service}"
-            )
-            return False
-
-        param = Parameter(
-            name=parameter_name,
-            value=ParameterValue(
-                type=ParameterType.PARAMETER_DOUBLE,
-                double_value=float(value),
-            ),
-        )
-        req = SetParameters.Request(parameters=[param])
-        future = self._petanque_param_client.call_async(req)
-
-        done = threading.Event()
-        future.add_done_callback(lambda _: done.set())
-        if not done.wait(timeout=self.param_call_timeout_sec):
-            self.get_logger().warning(
-                f"Timeout while setting parameter {parameter_name}"
-            )
-            return False
-
-        try:
-            result = future.result()
-        except Exception as exc:  # pragma: no cover
-            self.get_logger().warning(f"SetParameters call failed: {exc}")
-            return False
-
-        if not result or not result.results:
-            self.get_logger().warning("SetParameters returned empty result")
-            return False
-
-        if not result.results[0].successful:
-            reason = result.results[0].reason or "unknown error"
-            self.get_logger().warning(
-                f"Failed to set {parameter_name}: {reason}"
-            )
-            return False
-
-        self.get_logger().info(
-            f"Updated {parameter_name}={value:.3f}"
-        )
-        return True
 
     def set_connected(self, connected: bool) -> None:
         self._runtime_state.set_connected(connected)
