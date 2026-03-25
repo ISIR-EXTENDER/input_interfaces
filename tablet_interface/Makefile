@@ -26,7 +26,7 @@ run-ws-client: ## Run WS client test with workspace uv
 
 .PHONY: test
 test: ## Run unit tests with workspace uv
-	@PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q test/test_ws_models.py test/test_safety_gate.py test/test_teleop_mapping.py test/test_runtime_state.py test/test_petanque_bridge.py
+	@PYTEST_DISABLE_PLUGIN_AUTOLOAD=1 uv run pytest -q test/test_ws_models.py test/test_safety_gate.py test/test_teleop_mapping.py test/test_runtime_state.py test/test_petanque_bridge.py test/test_measure_bridge.py
 
 .PHONY: help
 help:

@@ -18,11 +18,8 @@ from tablet_interface.config import (
     load_tablet_interface_config,
 )
 from tablet_interface.generic_publishers import GenericPublisherCache
-from tablet_interface.measure_codec import (
-    decode_image_data_url,
-    encode_compressed_image_data_url,
-    load_demo_measure_image_data_url,
-)
+from tablet_interface.measure_bridge import MeasureBridge
+from tablet_interface.measure_codec import load_demo_measure_image_data_url
 from tablet_interface.petanque_bridge import PetanqueBridge
 from tablet_interface.runtime_state import TabletRuntimeState
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
@@ -183,6 +180,14 @@ class TabletInterfaceNode(Node):
             ),
             alpha_param=self.petanque_alpha_param,
             param_call_timeout_sec=self.param_call_timeout_sec,
+        )
+        self._measure_bridge = MeasureBridge(
+            logger=self.get_logger(),
+            request_image_publisher=self._measure_request_image_publisher,
+            runtime_state=self._runtime_state,
+            request_image_topic=self.measure_request_image_topic,
+            result_image_topic=self.measure_result_image_topic,
+            result_vectors_topic=self.measure_result_vectors_topic,
         )
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
@@ -392,59 +397,16 @@ class TabletInterfaceNode(Node):
         return self._petanque_bridge.set_alpha(alpha)
 
     def publish_measure_request_image(self, image_data_url: str) -> bool:
-        decoded = decode_image_data_url(image_data_url)
-        if decoded is None:
-            self.get_logger().warning("Invalid measure image_data_url payload")
-            return False
-
-        image_format, image_bytes = decoded
-        msg = CompressedImage()
-        msg.format = image_format
-        msg.data = image_bytes
-        self._measure_request_image_publisher.publish(msg)
-        self.get_logger().info(
-            "Published measure request image: topic={0} format={1} bytes={2}".format(
-                self.measure_request_image_topic,
-                image_format,
-                len(image_bytes),
-            )
-        )
-        return True
+        return self._measure_bridge.publish_request_image(image_data_url)
 
     def get_measure_result_snapshot(self) -> Dict[str, object]:
-        return self._runtime_state.get_measure_result_snapshot()
+        return self._measure_bridge.get_result_snapshot()
 
     def _on_measure_result_image(self, msg: CompressedImage) -> None:
-        image_data_url = encode_compressed_image_data_url(msg)
-        if not image_data_url:
-            self.get_logger().warning("Received empty measure result image")
-            return
-
-        self._runtime_state.update_measure_result_image(
-            image_data_url,
-            now_ms=self._now_ms(),
-        )
-
-        self.get_logger().info(
-            "Received measure result image: topic={0} format={1} bytes={2}".format(
-                self.measure_result_image_topic,
-                msg.format or "jpeg",
-                len(msg.data),
-            )
-        )
+        self._measure_bridge.on_result_image(msg, now_ms=self._now_ms())
 
     def _on_measure_result_vectors(self, msg: String) -> None:
-        self._runtime_state.update_measure_result_vectors(
-            msg.data,
-            now_ms=self._now_ms(),
-        )
-
-        self.get_logger().info(
-            "Received measure vectors: topic={0} chars={1}".format(
-                self.measure_result_vectors_topic,
-                len(msg.data),
-            )
-        )
+        self._measure_bridge.on_result_vectors(msg, now_ms=self._now_ms())
 
     def _on_sandbox_ee_pose(self, msg: PoseStamped) -> None:
         self._runtime_state.update_ee_pose(
