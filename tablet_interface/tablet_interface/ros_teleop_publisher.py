@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import threading
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
@@ -22,9 +22,9 @@ from tablet_interface.generic_publishers import GenericPublisherCache
 from tablet_interface.measure_codec import (
     decode_image_data_url,
     encode_compressed_image_data_url,
-    is_legacy_fake_measure_vectors,
     load_demo_measure_image_data_url,
 )
+from tablet_interface.runtime_state import TabletRuntimeState
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 
 MEASURE_DEMO_VECTORS_JSON = json.dumps(
@@ -95,25 +95,20 @@ class TabletInterfaceNode(Node):
             self.angular_axes = (0, 1, 2)
             self.angular_signs = (1.0, 1.0, 1.0)
 
-        self._lock = threading.Lock()
+        self._cmd_lock = threading.Lock()
         self._latest_twist = Twist()
-        self._current_mode: int = self.default_mode
-        self._last_cmd_received_ms: Optional[int] = None
-        self._last_seq: int = 0
-        self._connected: bool = False
-        self._last_events: List[str] = []
-        self._gripper_state: str = "unknown"
-        self._measure_result_image_data_url: str | None = None
-        self._measure_result_vectors_json: str | None = None
-        self._measure_result_updated_at_ms: int | None = None
-        self._measure_result_revision: int = 0
         self._measure_demo_vectors_json: str = MEASURE_DEMO_VECTORS_JSON
         self._measure_demo_image_data_url: str | None = (
             load_demo_measure_image_data_url(__file__)
         )
-        self._ee_pose: Dict[str, float] | None = None
-        self._tcp_speed_mps: float | None = None
-        self._joint_positions: List[float] | None = None
+        self._runtime_state = TabletRuntimeState(
+            default_mode=self.default_mode,
+            publish_rate_hz=self.publish_rate_hz,
+            gripper_open_position=self.gripper_open_position,
+            gripper_close_position=self.gripper_close_position,
+            measure_demo_vectors_json=self._measure_demo_vectors_json,
+            measure_demo_image_data_url=self._measure_demo_image_data_url,
+        )
         self._generic_publishers = GenericPublisherCache(self)
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
@@ -291,11 +286,13 @@ class TabletInterfaceNode(Node):
         if not self.accept_mode_from_client:
             mode = self.default_mode
 
-        with self._lock:
+        with self._cmd_lock:
             self._latest_twist = self._copy_twist(twist)
-            self._current_mode = int(mode)
-            self._last_cmd_received_ms = int(received_ms)
-            self._last_seq = int(seq)
+        self._runtime_state.update_command_meta(
+            mode=mode,
+            seq=seq,
+            received_ms=received_ms,
+        )
 
     def send_state_command(self, command: str) -> bool:
         normalized = command.strip().lower()
@@ -331,8 +328,7 @@ class TabletInterfaceNode(Node):
         msg = Float64MultiArray()
         msg.data = [float(position)]
         self._gripper_publisher.publish(msg)
-        with self._lock:
-            self._gripper_state = normalized
+        self._runtime_state.set_gripper_action(normalized)
         self.get_logger().info(
             "Published gripper command: action={0} topic={1} value={2:.3f}".format(
                 normalized,
@@ -389,11 +385,7 @@ class TabletInterfaceNode(Node):
         self._set_gripper_state_from_position(float(msg.data[0]))
 
     def _set_gripper_state_from_position(self, position: float) -> None:
-        open_distance = abs(position - float(self.gripper_open_position))
-        close_distance = abs(position - float(self.gripper_close_position))
-        state = "open" if open_distance <= close_distance else "close"
-        with self._lock:
-            self._gripper_state = state
+        self._runtime_state.update_gripper_position(position)
 
     def set_petanque_total_duration(self, total_duration: float) -> bool:
         if total_duration <= 0.0:
@@ -446,23 +438,7 @@ class TabletInterfaceNode(Node):
         return True
 
     def get_measure_result_snapshot(self) -> Dict[str, object]:
-        with self._lock:
-            image_data_url = self._measure_result_image_data_url
-            vectors_json = self._measure_result_vectors_json
-            updated_at_ms = self._measure_result_updated_at_ms
-            if (
-                is_legacy_fake_measure_vectors(vectors_json)
-                and self._measure_demo_image_data_url is not None
-            ):
-                image_data_url = self._measure_demo_image_data_url
-                vectors_json = self._measure_demo_vectors_json
-                updated_at_ms = None
-            return {
-                "revision": int(self._measure_result_revision),
-                "image_data_url": image_data_url,
-                "vectors_json": vectors_json,
-                "updated_at_ms": updated_at_ms,
-            }
+        return self._runtime_state.get_measure_result_snapshot()
 
     def _on_measure_result_image(self, msg: CompressedImage) -> None:
         image_data_url = encode_compressed_image_data_url(msg)
@@ -470,11 +446,10 @@ class TabletInterfaceNode(Node):
             self.get_logger().warning("Received empty measure result image")
             return
 
-        now_ms = self._now_ms()
-        with self._lock:
-            self._measure_result_image_data_url = image_data_url
-            self._measure_result_updated_at_ms = now_ms
-            self._measure_result_revision += 1
+        self._runtime_state.update_measure_result_image(
+            image_data_url,
+            now_ms=self._now_ms(),
+        )
 
         self.get_logger().info(
             "Received measure result image: topic={0} format={1} bytes={2}".format(
@@ -485,11 +460,10 @@ class TabletInterfaceNode(Node):
         )
 
     def _on_measure_result_vectors(self, msg: String) -> None:
-        now_ms = self._now_ms()
-        with self._lock:
-            self._measure_result_vectors_json = msg.data
-            self._measure_result_updated_at_ms = now_ms
-            self._measure_result_revision += 1
+        self._runtime_state.update_measure_result_vectors(
+            msg.data,
+            now_ms=self._now_ms(),
+        )
 
         self.get_logger().info(
             "Received measure vectors: topic={0} chars={1}".format(
@@ -499,12 +473,11 @@ class TabletInterfaceNode(Node):
         )
 
     def _on_sandbox_ee_pose(self, msg: PoseStamped) -> None:
-        with self._lock:
-            self._ee_pose = {
-                "x": float(msg.pose.position.x),
-                "y": float(msg.pose.position.y),
-                "z": float(msg.pose.position.z),
-            }
+        self._runtime_state.update_ee_pose(
+            x=float(msg.pose.position.x),
+            y=float(msg.pose.position.y),
+            z=float(msg.pose.position.z),
+        )
 
     def _on_sandbox_velocity_command(self, msg: TwistStamped) -> None:
         linear = msg.twist.linear
@@ -513,12 +486,10 @@ class TabletInterfaceNode(Node):
             + float(linear.y) ** 2
             + float(linear.z) ** 2
         ) ** 0.5
-        with self._lock:
-            self._tcp_speed_mps = speed
+        self._runtime_state.update_tcp_speed(speed)
 
     def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
-        with self._lock:
-            self._joint_positions = [float(value) for value in msg.data]
+        self._runtime_state.update_joint_positions([float(value) for value in msg.data])
 
     def _set_petanque_double_parameter(self, *, parameter_name: str, value: float) -> bool:
         if not parameter_name:
@@ -574,39 +545,16 @@ class TabletInterfaceNode(Node):
         return True
 
     def set_connected(self, connected: bool) -> None:
-        with self._lock:
-            self._connected = bool(connected)
+        self._runtime_state.set_connected(connected)
 
     def get_state(self) -> Dict[str, object]:
-        with self._lock:
-            now_ms = self._now_ms()
-            cmd_age_ms = None
-            if self._last_cmd_received_ms is not None:
-                cmd_age_ms = int(now_ms) - int(self._last_cmd_received_ms)
-
-            return {
-                "connected": self._connected,
-                "cmd_age_ms": cmd_age_ms,
-                "watchdog_timeout_ms": 0,
-                "last_seq": self._last_seq,
-                "publishing_rate_hz": float(self.publish_rate_hz),
-                "current_mode": int(self._current_mode),
-                "gripper_state": self._gripper_state,
-                "ee_pose": dict(self._ee_pose) if self._ee_pose is not None else None,
-                "tcp_speed_mps": self._tcp_speed_mps,
-                "joint_positions": (
-                    list(self._joint_positions)
-                    if self._joint_positions is not None
-                    else None
-                ),
-                "events": list(self._last_events),
-            }
+        return self._runtime_state.get_state(now_ms=self._now_ms())
 
     def _on_timer(self) -> None:
-        with self._lock:
+        with self._cmd_lock:
             twist = self._copy_twist(self._latest_twist)
-            mode = int(self._current_mode)
-            self._last_events = []
+        mode = self._runtime_state.get_current_mode()
+        self._runtime_state.clear_events()
 
         msg = TeleopCommand()
         msg.twist = twist
