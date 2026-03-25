@@ -21,6 +21,18 @@ For detailed documentation, see [`joystick_interface/Readme.md`](joystick_interf
 - `joystick_input_node`: Main teleoperation node
 - `franka_gripper_node`: Gripper control node
 
+### Tablet Interface (`tablet_interface`)
+
+The tablet interface package is the websocket backend used by `extender_ui`. It publishes `extender_msgs/TeleopCommand` on `/teleop_cmd`, preserves the legacy pétanque bridges, and now exposes generic `ui_button` / `ui_scalar` actions for sandbox-style applications.
+
+For detailed documentation, see [`tablet_interface/Readme.md`](tablet_interface/Readme.md).
+
+**Key Features:**
+- WebSocket bridge for the tablet UI
+- Generic scalar/button topic publishing for sandbox experiments
+- Optional sandbox controller feedback forwarding to the UI
+- Workspace-level `uv` development workflow
+
 
 ## Adding New Input Interfaces
 

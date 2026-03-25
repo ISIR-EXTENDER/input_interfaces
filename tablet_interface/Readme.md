@@ -1,103 +1,85 @@
 # Tablet Interface
 
-ROS 2 input interface that publishes `/teleop_cmd` from a WebSocket client.
+`tablet_interface` is the tablet backend bridge between `extender_ui` and ROS 2. It receives websocket commands from the UI, publishes `extender_msgs/TeleopCommand` on `/teleop_cmd`, and provides a small set of generic bridges for sandbox-style screens.
 
-## Run the node
+## Scope
 
-```bash
-ros2 run tablet_interface tablet_interface_node --ros-args --params-file config/tablet_interface_parameters_explorer.yaml
-```
+This package currently supports three layers of behavior:
 
-## Makefile (uv run)
+- core teleop: websocket `teleop_cmd` -> ROS `/teleop_cmd`
+- compatibility adapters for the existing pétanque flow
+- generic sandbox actions through `ui_button` and `ui_scalar`
 
-Use the Makefile to run the node and tools with uv:
+## Development workflow
 
-```bash
-make -C . run-node
-make -C . run-ws-client
-make -C . test
-```
+This package uses the workspace-level `uv` configuration from `extender_workspace`.
 
-## Developer WS client test
-
-The test client streams `cmd` messages at 50 Hz and prints `state` messages from the server.
+From the workspace root:
 
 ```bash
-python3 scripts/ws_client_test.py --host 127.0.0.1 --port 8765 --path /ws/control
+cd /home/susana/workspace/extender_workspace
+uv sync
 ```
 
-### WebSocket command format
+From the package directory:
 
-UI sends normalized values in [-1, 1]. Backend applies axis mapping and scaling.
+```bash
+cd src/input_interfaces/tablet_interface
+make run-node
+make run-ws-client
+make test
+```
+
+Notes:
+
+- there is no package-local `uv` project in `tablet_interface`
+- `make test` uses `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` to avoid unrelated ROS pytest plugins interfering with these unit tests
+- `make run-node` sources ROS and the workspace install before starting the node
+
+## Sandbox teleop path
+
+Minimal tablet-to-sandbox integration looks like this:
+
+1. `extender_ui` sends `teleop_cmd`
+2. `tablet_interface` maps and republishes it on `/teleop_cmd`
+3. `sandbox_controller` subscribes to `/teleop_cmd`
+4. the demo `update()` logic in `sandbox_controller` applies the received twist to robot behavior
+
+Recommended controller setting:
+
+```yaml
+sandbox_controller:
+  ros__parameters:
+    input_topic_name: "/teleop_cmd"
+```
+
+## WebSocket messages
+
+### Teleop
 
 ```json
 {
-	"type": "teleop_cmd",
-	"seq": 42,
-	"mode": 0,
-	"linear": { "x": 0.2, "y": -0.1, "z": 0.0 },
-	"angular": { "x": 0.0, "y": 0.0, "z": 0.0 }
+  "type": "teleop_cmd",
+  "seq": 42,
+  "mode": 3,
+  "linear": { "x": 0.2, "y": -0.1, "z": 0.0 },
+  "angular": { "x": 0.0, "y": 0.0, "z": 0.1 }
 }
 ```
 
-For pétanque integration, backend also supports:
+### Generic sandbox actions
 
-```json
-{ "type": "state_cmd", "command": "teleop" }
-```
-
-Allowed `command` values: `teleop`, `activate_throw`, `go_to_start`, `throw`, `pick_up`, `stop`.
-These are published as `std_msgs/String` on `/petanque_state_machine/change_state`.
-
-```json
-{ "type": "petanque_cfg", "total_duration": 1.0 }
-```
-
-Supported `petanque_cfg` fields:
-- `total_duration` (`> 0`)
-- `angle_between_start_and_finish`
-- `alpha` (`0..20`)
-
-Each field updates the matching `/petanque_throw` parameter through
-`/petanque_throw/set_parameters`.
-
-For measure workflow:
+`ui_button` publishes `std_msgs/String` to the requested topic unless the topic is handled by a compatibility adapter.
 
 ```json
 {
-  "type": "measure_request",
-  "image_data_url": "data:image/jpeg;base64,..."
+  "type": "ui_button",
+  "topic": "/sandbox/action",
+  "payload": "start"
 }
 ```
 
-Publishes image to ROS topic:
-- `/petanque/measure/request_image/compressed` (`sensor_msgs/CompressedImage`)
-
-Frontend can request cached result:
-
-```json
-{ "type": "measure_refresh" }
-```
-
-Backend returns:
-
-```json
-{
-  "type": "measure_result",
-  "image_data_url": "data:image/jpeg;base64,...",
-  "vectors_json": "{\"distances\":[0.6]}",
-  "updated_at_ms": 123456
-}
-```
-
-Backend listens for OpenCV outputs on:
-- `/petanque/measure/result_image/compressed` (`sensor_msgs/CompressedImage`)
-- `/petanque/measure/result_vectors` (`std_msgs/String`, JSON payload expected)
-
-`ui_button` messages are also accepted for compatibility. If `topic` matches
-`/petanque_state_machine/change_state`, backend forwards `payload` to the same bridge.
-Other `ui_button` messages are published generically as `std_msgs/String` on the
-requested topic.
+`ui_scalar` publishes `std_msgs/Float64`.
 
 ```json
 {
@@ -107,29 +89,93 @@ requested topic.
 }
 ```
 
-`ui_scalar` messages are published generically as `std_msgs/Float64` on the
-requested topic.
+### Compatibility messages
 
-The websocket `state` payload can also include sandbox feedback when available:
+These are still supported so older screens keep working:
+
+- `state_cmd`
+- `petanque_cfg`
+- `measure_request`
+- `measure_refresh`
+
+## Sandbox feedback forwarded to the UI
+
+When available, the websocket `state` payload can include:
+
 - `ee_pose` from `/sandbox_controller/ee_pose`
 - `tcp_speed_mps` computed from `/sandbox_controller/velocity_command`
 - `joint_positions` from `/sandbox_controller/joint_pose`
 
-### Mapping and scaling
+Default topic parameters:
 
-The backend can remap and invert tablet axes before publishing `/teleop_cmd`.
-This is configured through the ROS params file:
+- `sandbox_ee_pose_topic`
+- `sandbox_velocity_command_topic`
+- `sandbox_joint_pose_topic`
 
-- `linear_axes` / `linear_signs`
-- `angular_axes` / `angular_signs`
-- `linear_scale`, `angular_scale`
+## Main ROS parameters
+
+Teleop mapping:
+
+- `teleop_cmd_topic`
+- `publish_rate_hz`
+- `linear_scale`
+- `angular_scale`
+- `linear_axes`
+- `linear_signs`
+- `angular_axes`
+- `angular_signs`
 - `swap_xy`
 
-By default, tablet mapping is identity (`x->x`, `y->y`, `z->z`) and can be tuned per robot.
-Robot profiles are provided in:
+Websocket server:
+
+- `bind_host`
+- `bind_port`
+- `ws_path`
+- `state_publish_hz`
+
+Robot/application bridges:
+
+- `state_machine_topic`
+- `gripper_topic`
+- `hub_digital_output_topic`
+- `petanque_param_service`
+- `measure_request_image_topic`
+- `measure_result_image_topic`
+- `measure_result_vectors_topic`
+
+Robot-specific presets live in:
+
 - `config/tablet_interface_parameters_explorer.yaml`
 - `config/tablet_interface_parameters_kinova.yaml`
 
-**Expected behavior**
-- While the script runs, `/teleop_cmd` should be non-zero.
-- `/teleop_cmd` follows the latest UI command and mode.
+## Internal structure
+
+The package is organized so transport, validation, and ROS side effects are easier to reason about:
+
+- `config.py`: ROS parameter declaration/loading
+- `ros_teleop_publisher.py`: node orchestration and ROS bridges
+- `generic_publishers.py`: cached generic ROS publishers
+- `measure_codec.py`: image payload encoding/decoding helpers
+- `ws_models.py`: websocket payload validation
+- `ws_handlers.py`: websocket message routing
+- `ws_server.py`: FastAPI/Uvicorn transport layer
+
+## Verification
+
+Unit tests:
+
+```bash
+make test
+```
+
+Websocket test client:
+
+```bash
+make run-ws-client
+```
+
+Expected teleop proof behavior:
+
+- moving the tablet controls produces non-zero `/teleop_cmd`
+- sandbox controller receives `/teleop_cmd`
+- `/sandbox_controller/velocity_command` changes while teleop is active
