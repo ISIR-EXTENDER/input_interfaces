@@ -17,6 +17,8 @@ from tablet_interface.config import (
     declare_tablet_interface_parameters,
     load_tablet_interface_config,
 )
+from tablet_interface.actuator_bridge import ActuatorBridge
+from tablet_interface.camera_bridge import CameraBridge
 from tablet_interface.generic_publishers import GenericPublisherCache
 from tablet_interface.measure_bridge import MeasureBridge
 from tablet_interface.measure_codec import load_demo_measure_image_data_url
@@ -191,6 +193,21 @@ class TabletInterfaceNode(Node):
             result_vectors_topic=self.measure_result_vectors_topic,
         )
         self._sandbox_bridge = SandboxBridge(runtime_state=self._runtime_state)
+        self._actuator_bridge = ActuatorBridge(
+            logger=self.get_logger(),
+            gripper_publisher=self._gripper_publisher,
+            hub_digital_output_publisher=self._hub_digital_output_publisher,
+            runtime_state=self._runtime_state,
+            gripper_topic=self.gripper_topic,
+            gripper_open_position=self.gripper_open_position,
+            gripper_close_position=self.gripper_close_position,
+            hub_digital_output_topic=self.hub_digital_output_topic,
+            hub_electromagnet_channel=self.hub_electromagnet_channel,
+        )
+        self._camera_bridge = CameraBridge(
+            logger=self.get_logger(),
+            publishers=self._generic_publishers,
+        )
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
         self.get_logger().info("Tablet interface node initialized")
@@ -317,45 +334,10 @@ class TabletInterfaceNode(Node):
         return self._petanque_bridge.send_state_command(command)
 
     def set_gripper(self, action: str) -> bool:
-        normalized = action.strip().lower()
-        if normalized not in {"open", "close"}:
-            self.get_logger().warning(f"Invalid gripper action: {action}")
-            return False
-
-        position = (
-            self.gripper_open_position
-            if normalized == "open"
-            else self.gripper_close_position
-        )
-        msg = Float64MultiArray()
-        msg.data = [float(position)]
-        self._gripper_publisher.publish(msg)
-        self._runtime_state.set_gripper_action(normalized)
-        self.get_logger().info(
-            "Published gripper command: action={0} topic={1} value={2:.3f}".format(
-                normalized,
-                self.gripper_topic,
-                position,
-            )
-        )
-        return True
+        return self._actuator_bridge.set_gripper(action)
 
     def set_electromagnet(self, enabled: bool) -> bool:
-        msg = Float32MultiArray()
-        # Hardware wiring for the electromagnet is active-low:
-        # 0.0 => magnet ON, 1.0 => magnet OFF.
-        msg.data = [
-            float(self.hub_electromagnet_channel),
-            0.0 if enabled else 1.0,
-        ]
-        self._hub_digital_output_publisher.publish(msg)
-        self.get_logger().info(
-            "Published hub digital output: channel={0:.1f} value={1:.1f}".format(
-                self.hub_electromagnet_channel,
-                msg.data[1],
-            )
-        )
-        return True
+        return self._actuator_bridge.set_electromagnet(enabled)
 
     def publish_ui_button(self, topic: str, payload: str) -> bool:
         ok = self._generic_publishers.publish_string(topic, payload)
@@ -382,9 +364,7 @@ class TabletInterfaceNode(Node):
         return True
 
     def _on_gripper_command(self, msg: Float64MultiArray) -> None:
-        if not msg.data:
-            return
-        self._set_gripper_state_from_position(float(msg.data[0]))
+        self._actuator_bridge.on_gripper_command(msg)
 
     def _set_gripper_state_from_position(self, position: float) -> None:
         self._runtime_state.update_gripper_position(position)
@@ -418,6 +398,12 @@ class TabletInterfaceNode(Node):
 
     def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
         self._sandbox_bridge.on_joint_pose(msg)
+
+    def publish_camera_frame(self, *, topic: str, image_data_url: str) -> bool:
+        return self._camera_bridge.publish_frame(
+            topic=topic,
+            image_data_url=image_data_url,
+        )
 
     def set_connected(self, connected: bool) -> None:
         self._runtime_state.set_connected(connected)

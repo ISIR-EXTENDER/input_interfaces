@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from tablet_interface.ws_models import (
+    CameraFrameMessage,
     CmdMessage,
     EventMessage,
     GripperCmdMessage,
@@ -222,6 +223,37 @@ def test_ui_button_invalid() -> None:
                 "payload": "throw",
             }
         )
+
+
+def test_camera_frame_valid() -> None:
+    payload = {
+        "type": "camera_frame",
+        "topic": "/tablet/camera/front/compressed",
+        "image_data_url": "data:image/jpeg;base64,AAAAAAAAAAAAAA==",
+        "widget_id": "camera-front",
+    }
+    msg = CameraFrameMessage.model_validate(payload)
+    assert msg.topic == "/tablet/camera/front/compressed"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "type": "camera_frame",
+            "topic": "",
+            "image_data_url": "data:image/jpeg;base64,AAAAAAAAAAAAAA==",
+        },
+        {
+            "type": "camera_frame",
+            "topic": "/tablet/camera/front/compressed",
+            "image_data_url": "not-a-data-url",
+        },
+    ],
+)
+def test_camera_frame_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        CameraFrameMessage.model_validate(payload)
 
 
 def test_ui_scalar_valid() -> None:

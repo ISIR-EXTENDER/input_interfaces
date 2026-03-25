@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Protocol
 
 from tablet_interface.ws_models import (
+    CameraFrameMessage,
     CmdMessage,
     EventMessage,
     GripperCmdMessage,
@@ -255,6 +256,20 @@ async def handle_ws_payload(
             code="UI_SCALAR_OK" if ok else "UI_SCALAR_FAILED",
             severity="info" if ok else "warning",
             message=f"ui_scalar topic={scalar.topic} value={scalar.value:.3f}",
+        )
+        return
+
+    if msg_type == "camera_frame":
+        frame = CameraFrameMessage.model_validate(payload)
+        ok = node.publish_camera_frame(
+            topic=frame.topic,
+            image_data_url=frame.image_data_url,
+        )
+        await send_event(
+            sender,
+            code="CAMERA_FRAME_OK" if ok else "CAMERA_FRAME_FAILED",
+            severity="info" if ok else "warning",
+            message=f"camera_frame topic={frame.topic}",
         )
         return
 

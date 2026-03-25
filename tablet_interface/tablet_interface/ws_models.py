@@ -75,6 +75,19 @@ class UiScalarMessage(BaseModel):
     widget_id: str | None = None
 
 
+class CameraFrameMessage(BaseModel):
+    type: Literal["camera_frame"]
+    topic: str = Field(min_length=1)
+    image_data_url: str = Field(min_length=32)
+    widget_id: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_image_data_url(self) -> "CameraFrameMessage":
+        if not self.image_data_url.startswith("data:image/"):
+            raise ValueError("camera_frame image_data_url must start with data:image/")
+        return self
+
+
 class MeasureRequestMessage(BaseModel):
     type: Literal["measure_request"]
     image_data_url: str = Field(min_length=32)
@@ -131,6 +144,7 @@ __all__ = [
     "PetanqueConfigMessage",
     "UiButtonMessage",
     "UiScalarMessage",
+    "CameraFrameMessage",
     "MeasureRequestMessage",
     "MeasureRefreshMessage",
     "MeasureResultMessage",

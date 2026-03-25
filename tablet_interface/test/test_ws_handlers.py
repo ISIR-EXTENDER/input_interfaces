@@ -35,6 +35,7 @@ class FakeNode:
         self.hub_digital_output_topic = "/hub/digital_output"
         self.logger = FakeLogger()
         self.scalar_calls: list[tuple[str, float]] = []
+        self.camera_calls: list[tuple[str, str]] = []
         self.measure_snapshot: dict[str, object] = {
             "image_data_url": "data:image/png;base64,AA==",
             "vectors_json": '{"source":"opencv"}',
@@ -46,6 +47,10 @@ class FakeNode:
 
     def publish_ui_scalar(self, topic: str, value: float) -> bool:
         self.scalar_calls.append((topic, value))
+        return True
+
+    def publish_camera_frame(self, *, topic: str, image_data_url: str) -> bool:
+        self.camera_calls.append((topic, image_data_url))
         return True
 
     def get_measure_result_snapshot(self) -> dict[str, object]:
@@ -132,3 +137,35 @@ def test_handle_ws_payload_measure_refresh_sends_cached_result_then_event() -> N
         },
     ]
 
+
+def test_handle_ws_payload_camera_frame_emits_success_event() -> None:
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {
+                "type": "camera_frame",
+                "topic": "/tablet/camera/front/compressed",
+                "image_data_url": "data:image/jpeg;base64,AAAAAAAAAAAAAA==",
+                "widget_id": "camera-front",
+            },
+        )
+    )
+
+    assert node.camera_calls == [
+        (
+            "/tablet/camera/front/compressed",
+            "data:image/jpeg;base64,AAAAAAAAAAAAAA==",
+        )
+    ]
+    assert sender.messages == [
+        {
+            "type": "event",
+            "severity": "info",
+            "code": "CAMERA_FRAME_OK",
+            "message": "camera_frame topic=/tablet/camera/front/compressed",
+        }
+    ]
