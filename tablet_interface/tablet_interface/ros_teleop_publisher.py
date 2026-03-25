@@ -22,6 +22,7 @@ from tablet_interface.measure_bridge import MeasureBridge
 from tablet_interface.measure_codec import load_demo_measure_image_data_url
 from tablet_interface.petanque_bridge import PetanqueBridge
 from tablet_interface.runtime_state import TabletRuntimeState
+from tablet_interface.sandbox_bridge import SandboxBridge
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 
 MEASURE_DEMO_VECTORS_JSON = json.dumps(
@@ -189,6 +190,7 @@ class TabletInterfaceNode(Node):
             result_image_topic=self.measure_result_image_topic,
             result_vectors_topic=self.measure_result_vectors_topic,
         )
+        self._sandbox_bridge = SandboxBridge(runtime_state=self._runtime_state)
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
         self.get_logger().info("Tablet interface node initialized")
@@ -409,23 +411,13 @@ class TabletInterfaceNode(Node):
         self._measure_bridge.on_result_vectors(msg, now_ms=self._now_ms())
 
     def _on_sandbox_ee_pose(self, msg: PoseStamped) -> None:
-        self._runtime_state.update_ee_pose(
-            x=float(msg.pose.position.x),
-            y=float(msg.pose.position.y),
-            z=float(msg.pose.position.z),
-        )
+        self._sandbox_bridge.on_ee_pose(msg)
 
     def _on_sandbox_velocity_command(self, msg: TwistStamped) -> None:
-        linear = msg.twist.linear
-        speed = (
-            float(linear.x) ** 2
-            + float(linear.y) ** 2
-            + float(linear.z) ** 2
-        ) ** 0.5
-        self._runtime_state.update_tcp_speed(speed)
+        self._sandbox_bridge.on_velocity_command(msg)
 
     def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
-        self._runtime_state.update_joint_positions([float(value) for value in msg.data])
+        self._sandbox_bridge.on_joint_pose(msg)
 
     def set_connected(self, connected: bool) -> None:
         self._runtime_state.set_connected(connected)
