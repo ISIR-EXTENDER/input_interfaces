@@ -35,6 +35,7 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
             PetanqueConfigMessage,
             StateCmdMessage,
             UiButtonMessage,
+            UiScalarMessage,
         )
     except Exception as exc:  # pragma: no cover
         node.get_logger().error(
@@ -71,6 +72,9 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                 "publishing_rate_hz": state["publishing_rate_hz"],
                 "current_mode": state["current_mode"],
                 "gripper_state": state.get("gripper_state"),
+                "ee_pose": state.get("ee_pose"),
+                "tcp_speed_mps": state.get("tcp_speed_mps"),
+                "joint_positions": state.get("joint_positions"),
             }
             await websocket.send_json(message)
 
@@ -251,14 +255,15 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                         button = UiButtonMessage.model_validate(payload)
                         handled = False
                         if button.topic == node.state_machine_topic:
-                            handled = True
                             ok = node.send_state_command(button.payload)
-                            await _send_event(
-                                websocket,
-                                code="STATE_CMD_OK" if ok else "STATE_CMD_FAILED",
-                                severity="info" if ok else "warning",
-                                message=f"ui_button payload={button.payload}",
-                            )
+                            if ok:
+                                handled = True
+                                await _send_event(
+                                    websocket,
+                                    code="STATE_CMD_OK",
+                                    severity="info",
+                                    message=f"ui_button payload={button.payload}",
+                                )
                         if button.topic == node.hub_digital_output_topic:
                             normalized = button.payload.strip().lower()
                             enable_values = {
@@ -289,6 +294,17 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                                         f"electromagnet={'on' if enabled else 'off'}"
                                     ),
                                 )
+                        if not handled and button.topic != node.hub_digital_output_topic:
+                            ok = node.publish_ui_button(button.topic, button.payload)
+                            handled = ok
+                            await _send_event(
+                                websocket,
+                                code="UI_BUTTON_OK" if ok else "UI_BUTTON_FAILED",
+                                severity="info" if ok else "warning",
+                                message=(
+                                    f"ui_button topic={button.topic} payload={button.payload}"
+                                ),
+                            )
                         if not handled:
                             await _send_event(
                                 websocket,
@@ -296,6 +312,19 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                                 severity="warning",
                                 message=f"unsupported ui_button topic={button.topic}",
                             )
+                        continue
+
+                    if msg_type == "ui_scalar":
+                        scalar = UiScalarMessage.model_validate(payload)
+                        ok = node.publish_ui_scalar(scalar.topic, scalar.value)
+                        await _send_event(
+                            websocket,
+                            code="UI_SCALAR_OK" if ok else "UI_SCALAR_FAILED",
+                            severity="info" if ok else "warning",
+                            message=(
+                                f"ui_scalar topic={scalar.topic} value={scalar.value:.3f}"
+                            ),
+                        )
                         continue
 
                     await _send_event(

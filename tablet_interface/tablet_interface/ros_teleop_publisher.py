@@ -11,9 +11,9 @@ import rclpy
 from rclpy.node import Node
 from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
+from std_msgs.msg import Float32MultiArray, Float64, Float64MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
 
@@ -71,6 +71,11 @@ class TabletInterfaceNode(Node):
         self.declare_parameter(
             "measure_result_vectors_topic", "/petanque/measure/result_vectors"
         )
+        self.declare_parameter("sandbox_ee_pose_topic", "/sandbox_controller/ee_pose")
+        self.declare_parameter(
+            "sandbox_velocity_command_topic", "/sandbox_controller/velocity_command"
+        )
+        self.declare_parameter("sandbox_joint_pose_topic", "/sandbox_controller/joint_pose")
         self.declare_parameter("param_call_timeout_sec", 1.5)
 
         self.teleop_cmd_topic = self.get_parameter("teleop_cmd_topic").value
@@ -121,6 +126,15 @@ class TabletInterfaceNode(Node):
         self.measure_result_vectors_topic = str(
             self.get_parameter("measure_result_vectors_topic").value
         )
+        self.sandbox_ee_pose_topic = str(
+            self.get_parameter("sandbox_ee_pose_topic").value
+        )
+        self.sandbox_velocity_command_topic = str(
+            self.get_parameter("sandbox_velocity_command_topic").value
+        )
+        self.sandbox_joint_pose_topic = str(
+            self.get_parameter("sandbox_joint_pose_topic").value
+        )
         self.param_call_timeout_sec = float(self.get_parameter("param_call_timeout_sec").value)
         try:
             self.linear_axes, self.linear_signs = normalize_mapping(
@@ -156,6 +170,11 @@ class TabletInterfaceNode(Node):
         self._measure_demo_image_data_url: str | None = (
             self._load_default_measure_demo_image_data_url()
         )
+        self._ee_pose: Dict[str, float] | None = None
+        self._tcp_speed_mps: float | None = None
+        self._joint_positions: List[float] | None = None
+        self._ui_button_publishers: Dict[str, object] = {}
+        self._ui_scalar_publishers: Dict[str, object] = {}
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -184,6 +203,36 @@ class TabletInterfaceNode(Node):
             self.measure_result_vectors_topic,
             self._on_measure_result_vectors,
             10,
+        )
+        self._sandbox_ee_pose_subscription = (
+            self.create_subscription(
+                PoseStamped,
+                self.sandbox_ee_pose_topic,
+                self._on_sandbox_ee_pose,
+                10,
+            )
+            if self.sandbox_ee_pose_topic
+            else None
+        )
+        self._sandbox_velocity_subscription = (
+            self.create_subscription(
+                TwistStamped,
+                self.sandbox_velocity_command_topic,
+                self._on_sandbox_velocity_command,
+                10,
+            )
+            if self.sandbox_velocity_command_topic
+            else None
+        )
+        self._sandbox_joint_pose_subscription = (
+            self.create_subscription(
+                Float64MultiArray,
+                self.sandbox_joint_pose_topic,
+                self._on_sandbox_joint_pose,
+                10,
+            )
+            if self.sandbox_joint_pose_topic
+            else None
         )
         self._petanque_param_client = self.create_client(
             SetParameters, self.petanque_param_service
@@ -251,6 +300,13 @@ class TabletInterfaceNode(Node):
                 self.measure_request_image_topic,
                 self.measure_result_image_topic,
                 self.measure_result_vectors_topic,
+            )
+        )
+        self.get_logger().info(
+            "Sandbox feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2}".format(
+                self.sandbox_ee_pose_topic or "disabled",
+                self.sandbox_velocity_command_topic or "disabled",
+                self.sandbox_joint_pose_topic or "disabled",
             )
         )
 
@@ -359,6 +415,50 @@ class TabletInterfaceNode(Node):
             "Published hub digital output: channel={0:.1f} value={1:.1f}".format(
                 self.hub_electromagnet_channel,
                 msg.data[1],
+            )
+        )
+        return True
+
+    def publish_ui_button(self, topic: str, payload: str) -> bool:
+        normalized_topic = topic.strip()
+        if not normalized_topic:
+            self.get_logger().warning("UI button topic is empty")
+            return False
+
+        publisher = self._ui_button_publishers.get(normalized_topic)
+        if publisher is None:
+            publisher = self.create_publisher(String, normalized_topic, 10)
+            self._ui_button_publishers[normalized_topic] = publisher
+
+        msg = String()
+        msg.data = payload
+        publisher.publish(msg)
+        self.get_logger().info(
+            "Published generic UI button: topic={0} payload={1}".format(
+                normalized_topic,
+                payload,
+            )
+        )
+        return True
+
+    def publish_ui_scalar(self, topic: str, value: float) -> bool:
+        normalized_topic = topic.strip()
+        if not normalized_topic:
+            self.get_logger().warning("UI scalar topic is empty")
+            return False
+
+        publisher = self._ui_scalar_publishers.get(normalized_topic)
+        if publisher is None:
+            publisher = self.create_publisher(Float64, normalized_topic, 10)
+            self._ui_scalar_publishers[normalized_topic] = publisher
+
+        msg = Float64()
+        msg.data = float(value)
+        publisher.publish(msg)
+        self.get_logger().info(
+            "Published generic UI scalar: topic={0} value={1:.3f}".format(
+                normalized_topic,
+                float(value),
             )
         )
         return True
@@ -477,6 +577,28 @@ class TabletInterfaceNode(Node):
                 len(msg.data),
             )
         )
+
+    def _on_sandbox_ee_pose(self, msg: PoseStamped) -> None:
+        with self._lock:
+            self._ee_pose = {
+                "x": float(msg.pose.position.x),
+                "y": float(msg.pose.position.y),
+                "z": float(msg.pose.position.z),
+            }
+
+    def _on_sandbox_velocity_command(self, msg: TwistStamped) -> None:
+        linear = msg.twist.linear
+        speed = (
+            float(linear.x) ** 2
+            + float(linear.y) ** 2
+            + float(linear.z) ** 2
+        ) ** 0.5
+        with self._lock:
+            self._tcp_speed_mps = speed
+
+    def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
+        with self._lock:
+            self._joint_positions = [float(value) for value in msg.data]
 
     def _decode_image_data_url(self, image_data_url: str) -> tuple[str, bytes] | None:
         raw = image_data_url.strip()
@@ -613,6 +735,13 @@ class TabletInterfaceNode(Node):
                 "publishing_rate_hz": float(self.publish_rate_hz),
                 "current_mode": int(self._current_mode),
                 "gripper_state": self._gripper_state,
+                "ee_pose": dict(self._ee_pose) if self._ee_pose is not None else None,
+                "tcp_speed_mps": self._tcp_speed_mps,
+                "joint_positions": (
+                    list(self._joint_positions)
+                    if self._joint_positions is not None
+                    else None
+                ),
                 "events": list(self._last_events),
             }
 

@@ -68,6 +68,13 @@ class UiButtonMessage(BaseModel):
     widget_id: str | None = None
 
 
+class UiScalarMessage(BaseModel):
+    type: Literal["ui_scalar"]
+    topic: str = Field(min_length=1)
+    value: confloat(allow_inf_nan=False)
+    widget_id: str | None = None
+
+
 class MeasureRequestMessage(BaseModel):
     type: Literal["measure_request"]
     image_data_url: str = Field(min_length=32)
@@ -90,6 +97,12 @@ class MeasureResultMessage(BaseModel):
     updated_at_ms: conint(strict=True, ge=0) | None = None
 
 
+class PositionMessage(BaseModel):
+    x: confloat(allow_inf_nan=False)
+    y: confloat(allow_inf_nan=False)
+    z: confloat(allow_inf_nan=False)
+
+
 class StateMessage(BaseModel):
     type: Literal["state"]
     connected: bool
@@ -99,6 +112,9 @@ class StateMessage(BaseModel):
     publishing_rate_hz: confloat(strict=True, ge=0)
     current_mode: conint(strict=True, ge=0, le=3)
     gripper_state: Literal["open", "close", "unknown"] | None = None
+    ee_pose: PositionMessage | None = None
+    tcp_speed_mps: confloat(ge=0.0, allow_inf_nan=False) | None = None
+    joint_positions: list[confloat(allow_inf_nan=False)] | None = None
 
 
 class EventMessage(BaseModel):
@@ -114,9 +130,11 @@ __all__ = [
     "GripperCmdMessage",
     "PetanqueConfigMessage",
     "UiButtonMessage",
+    "UiScalarMessage",
     "MeasureRequestMessage",
     "MeasureRefreshMessage",
     "MeasureResultMessage",
+    "PositionMessage",
     "StateMessage",
     "EventMessage",
     "Vector3Model",

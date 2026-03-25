@@ -96,6 +96,24 @@ Backend listens for OpenCV outputs on:
 
 `ui_button` messages are also accepted for compatibility. If `topic` matches
 `/petanque_state_machine/change_state`, backend forwards `payload` to the same bridge.
+Other `ui_button` messages are published generically as `std_msgs/String` on the
+requested topic.
+
+```json
+{
+  "type": "ui_scalar",
+  "topic": "/sandbox/max_velocity",
+  "value": 1.25
+}
+```
+
+`ui_scalar` messages are published generically as `std_msgs/Float64` on the
+requested topic.
+
+The websocket `state` payload can also include sandbox feedback when available:
+- `ee_pose` from `/sandbox_controller/ee_pose`
+- `tcp_speed_mps` computed from `/sandbox_controller/velocity_command`
+- `joint_positions` from `/sandbox_controller/joint_pose`
 
 ### Mapping and scaling
 
