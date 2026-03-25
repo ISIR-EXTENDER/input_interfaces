@@ -8,7 +8,7 @@ This package currently supports three layers of behavior:
 
 - core teleop: websocket `teleop_cmd` -> ROS `/teleop_cmd`
 - compatibility adapters for the existing pétanque flow
-- generic sandbox actions through `ui_button` and `ui_scalar`
+- generic sandbox actions through `ui_button`, `ui_scalar`, and `camera_frame`
 
 ## Development workflow
 
@@ -89,6 +89,16 @@ sandbox_controller:
 }
 ```
 
+`camera_frame` publishes `sensor_msgs/CompressedImage` to the requested ROS topic. This is the generic path for browser-originated camera/webcam frames that need to become reusable ROS data.
+
+```json
+{
+  "type": "camera_frame",
+  "topic": "/tablet/camera/front/compressed",
+  "image_data_url": "data:image/jpeg;base64,..."
+}
+```
+
 ### Compatibility messages
 
 These are still supported so older screens keep working:
@@ -155,10 +165,26 @@ The package is organized so transport, validation, and ROS side effects are easi
 - `config.py`: ROS parameter declaration/loading
 - `ros_teleop_publisher.py`: node orchestration and ROS bridges
 - `generic_publishers.py`: cached generic ROS publishers
+- `actuator_bridge.py`: gripper and electromagnet ROS bridge
+- `camera_bridge.py`: generic browser-image to ROS image bridge
 - `measure_codec.py`: image payload encoding/decoding helpers
+- `measure_bridge.py`: petanque measure request/result bridge
+- `petanque_bridge.py`: petanque state-machine and parameter bridge
+- `sandbox_bridge.py`: sandbox controller feedback bridge
 - `ws_models.py`: websocket payload validation
 - `ws_handlers.py`: websocket message routing
 - `ws_server.py`: FastAPI/Uvicorn transport layer
+
+## Webcam migration plan
+
+Today, some webcam capture logic still lives in `extender_ui`, especially for the petanque measure flow. The backend now supports a generic `camera_frame` websocket message so we can move toward this architecture:
+
+1. the browser captures a frame from a webcam or stream widget
+2. `extender_ui` sends `camera_frame`
+3. `tablet_interface` republishes it as `sensor_msgs/CompressedImage`
+4. downstream ROS nodes can subscribe directly for measure pipelines, visual servoing, or recording
+
+This is the preferred direction for future app-specific camera features because it makes camera data available to the ROS graph instead of keeping it trapped inside the browser runtime.
 
 ## Verification
 
