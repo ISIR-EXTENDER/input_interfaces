@@ -1,207 +1,73 @@
 # Tablet Interface
 
-`tablet_interface` is the tablet backend bridge between `extender_ui` and ROS 2. It receives websocket commands from the UI, publishes `extender_msgs/TeleopCommand` on `/teleop_cmd`, and provides a small set of generic bridges for sandbox-style screens.
+`tablet_interface` is the ROS 2 websocket backend used by `extender_ui`. It translates generic UI messages into ROS topics and forwards robot feedback back to the UI.
 
-## Scope
+## Architecture
 
-This package currently supports three layers of behavior:
+The backend now follows the same split as the UI:
 
-- core teleop: websocket `teleop_cmd` -> ROS `/teleop_cmd`
-- compatibility adapters for the existing pétanque flow
-- generic sandbox actions through `ui_button`, `ui_scalar`, and `camera_frame`
+- generic core: websocket transport, teleop publishing, runtime state
+- bridges: isolated ROS-side behavior for each domain
+- compatibility layer: pétanque support kept intact during the refactor
 
-## Development workflow
+Main modules:
 
-This package uses the workspace-level `uv` configuration from `extender_workspace`.
+- `ros_teleop_publisher.py`: node orchestration
+- `ws_server.py`, `ws_handlers.py`, `ws_models.py`: websocket transport and validation
+- `runtime_state.py`: shared backend state sent to the UI
+- `petanque_bridge.py`
+- `measure_bridge.py`
+- `sandbox_bridge.py`
+- `actuator_bridge.py`
+- `camera_bridge.py`
 
-From the workspace root:
+## Main websocket contract
 
-```bash
-cd /home/susana/workspace/extender_workspace
-uv sync
-```
+- `teleop_cmd` -> publishes `extender_msgs/TeleopCommand`
+- `ui_button` -> publishes `std_msgs/String`
+- `ui_scalar` -> publishes `std_msgs/Float64`
+- `camera_frame` -> publishes `sensor_msgs/CompressedImage`
 
-From the package directory:
-
-```bash
-cd src/input_interfaces/tablet_interface
-make run-node
-make run-ws-client
-make test
-```
-
-Notes:
-
-- there is no package-local `uv` project in `tablet_interface`
-- `make test` uses `PYTEST_DISABLE_PLUGIN_AUTOLOAD=1` to avoid unrelated ROS pytest plugins interfering with these unit tests
-- `make run-node` sources ROS and the workspace install before starting the node
-
-## Sandbox teleop path
-
-Minimal tablet-to-sandbox integration looks like this:
-
-1. `extender_ui` sends `teleop_cmd`
-2. `tablet_interface` maps and republishes it on `/teleop_cmd`
-3. `sandbox_controller` subscribes to `/teleop_cmd`
-4. the demo `update()` logic in `sandbox_controller` applies the received twist to robot behavior
-
-Recommended controller setting:
-
-```yaml
-sandbox_controller:
-  ros__parameters:
-    input_topic_name: "/teleop_cmd"
-```
-
-## WebSocket messages
-
-### Teleop
-
-```json
-{
-  "type": "teleop_cmd",
-  "seq": 42,
-  "mode": 3,
-  "linear": { "x": 0.2, "y": -0.1, "z": 0.0 },
-  "angular": { "x": 0.0, "y": 0.0, "z": 0.1 }
-}
-```
-
-### Generic sandbox actions
-
-`ui_button` publishes `std_msgs/String` to the requested topic unless the topic is handled by a compatibility adapter.
-
-```json
-{
-  "type": "ui_button",
-  "topic": "/sandbox/action",
-  "payload": "start"
-}
-```
-
-`ui_scalar` publishes `std_msgs/Float64`.
-
-```json
-{
-  "type": "ui_scalar",
-  "topic": "/sandbox/max_velocity",
-  "value": 1.25
-}
-```
-
-`camera_frame` publishes `sensor_msgs/CompressedImage` to the requested ROS topic. This is the generic path for browser-originated camera/webcam frames that need to become reusable ROS data.
-
-```json
-{
-  "type": "camera_frame",
-  "topic": "/tablet/camera/front/compressed",
-  "image_data_url": "data:image/jpeg;base64,..."
-}
-```
-
-### Compatibility messages
-
-These are still supported so older screens keep working:
+Compatibility messages still supported for existing pétanque screens:
 
 - `state_cmd`
 - `petanque_cfg`
 - `measure_request`
 - `measure_refresh`
 
-## Sandbox feedback forwarded to the UI
+## Sandbox path
 
-When available, the websocket `state` payload can include:
+Minimal sandbox teleop flow:
 
-- `ee_pose` from `/sandbox_controller/ee_pose`
-- `tcp_speed_mps` computed from `/sandbox_controller/velocity_command`
-- `joint_positions` from `/sandbox_controller/joint_pose`
+1. UI sends `teleop_cmd`
+2. `tablet_interface` republishes `/teleop_cmd`
+3. `sandbox_controller` consumes `/teleop_cmd`
 
-Default topic parameters:
+Sandbox feedback forwarded to UI state:
 
-- `sandbox_ee_pose_topic`
-- `sandbox_velocity_command_topic`
-- `sandbox_joint_pose_topic`
+- `ee_pose`
+- `tcp_speed_mps`
+- `joint_positions`
 
-## Main ROS parameters
+## Camera direction
 
-Teleop mapping:
+The backend now accepts `camera_frame`, republishes it as ROS `CompressedImage`, and makes browser-captured frames available to ROS nodes. This is the preferred path for future camera, RGB-D, perception, and visual-servoing features.
 
-- `teleop_cmd_topic`
-- `publish_rate_hz`
-- `linear_scale`
-- `angular_scale`
-- `linear_axes`
-- `linear_signs`
-- `angular_axes`
-- `angular_signs`
-- `swap_xy`
+## Development
 
-Websocket server:
-
-- `bind_host`
-- `bind_port`
-- `ws_path`
-- `state_publish_hz`
-
-Robot/application bridges:
-
-- `state_machine_topic`
-- `gripper_topic`
-- `hub_digital_output_topic`
-- `petanque_param_service`
-- `measure_request_image_topic`
-- `measure_result_image_topic`
-- `measure_result_vectors_topic`
-
-Robot-specific presets live in:
-
-- `config/tablet_interface_parameters_explorer.yaml`
-- `config/tablet_interface_parameters_kinova.yaml`
-
-## Internal structure
-
-The package is organized so transport, validation, and ROS side effects are easier to reason about:
-
-- `config.py`: ROS parameter declaration/loading
-- `ros_teleop_publisher.py`: node orchestration and ROS bridges
-- `generic_publishers.py`: cached generic ROS publishers
-- `actuator_bridge.py`: gripper and electromagnet ROS bridge
-- `camera_bridge.py`: generic browser-image to ROS image bridge
-- `measure_codec.py`: image payload encoding/decoding helpers
-- `measure_bridge.py`: petanque measure request/result bridge
-- `petanque_bridge.py`: petanque state-machine and parameter bridge
-- `sandbox_bridge.py`: sandbox controller feedback bridge
-- `ws_models.py`: websocket payload validation
-- `ws_handlers.py`: websocket message routing
-- `ws_server.py`: FastAPI/Uvicorn transport layer
-
-## Webcam migration plan
-
-Today, some webcam capture logic still lives in `extender_ui`, especially for the petanque measure flow. The backend now supports a generic `camera_frame` websocket message so we can move toward this architecture:
-
-1. the browser captures a frame from a webcam or stream widget
-2. `extender_ui` sends `camera_frame`
-3. `tablet_interface` republishes it as `sensor_msgs/CompressedImage`
-4. downstream ROS nodes can subscribe directly for measure pipelines, visual servoing, or recording
-
-This is the preferred direction for future app-specific camera features because it makes camera data available to the ROS graph instead of keeping it trapped inside the browser runtime.
-
-## Verification
-
-Unit tests:
+This package uses the workspace-level `uv` config.
 
 ```bash
+cd /home/susana/workspace/extender_workspace
+uv sync
+cd src/input_interfaces/tablet_interface
+make run-node
 make test
 ```
 
-Websocket test client:
+## Contributing
 
-```bash
-make run-ws-client
-```
-
-Expected teleop proof behavior:
-
-- moving the tablet controls produces non-zero `/teleop_cmd`
-- sandbox controller receives `/teleop_cmd`
-- `/sandbox_controller/velocity_command` changes while teleop is active
+- keep generic behavior in the core/websocket layer
+- put app-specific ROS behavior in bridge modules
+- preserve pétanque compatibility unless the team explicitly removes it
+- prefer generic messages over new custom websocket message types when possible
