@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import threading
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import rclpy
@@ -13,10 +10,21 @@ from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
 from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from sensor_msgs.msg import CompressedImage
-from std_msgs.msg import Float32MultiArray, Float64, Float64MultiArray, String
+from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
 
+from tablet_interface.config import (
+    declare_tablet_interface_parameters,
+    load_tablet_interface_config,
+)
+from tablet_interface.generic_publishers import GenericPublisherCache
+from tablet_interface.measure_codec import (
+    decode_image_data_url,
+    encode_compressed_image_data_url,
+    is_legacy_fake_measure_vectors,
+    load_demo_measure_image_data_url,
+)
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 
 MEASURE_DEMO_VECTORS_JSON = json.dumps(
@@ -32,110 +40,43 @@ class TabletInterfaceNode(Node):
     def __init__(self) -> None:
         super().__init__("tablet_interface_node")
 
-        self.declare_parameter("teleop_cmd_topic", "/teleop_cmd")
-        self.declare_parameter("publish_rate_hz", 30.0)
-        self.declare_parameter("linear_scale", 0.2)
-        self.declare_parameter("angular_scale", 0.5)
-        self.declare_parameter("swap_xy", False)
-        self.declare_parameter("linear_axes", [0, 1, 2])
-        self.declare_parameter("linear_signs", [1.0, 1.0, 1.0])
-        self.declare_parameter("angular_axes", [0, 1, 2])
-        self.declare_parameter("angular_signs", [1.0, 1.0, 1.0])
-        self.declare_parameter("default_mode", 0)
-        self.declare_parameter("accept_mode_from_client", True)
-        self.declare_parameter("state_publish_hz", 5.0)
-        self.declare_parameter("bind_host", "0.0.0.0")
-        self.declare_parameter("bind_port", 8765)
-        self.declare_parameter("ws_path", "/ws/control")
-        self.declare_parameter(
-            "state_machine_topic", "/petanque_state_machine/change_state"
-        )
-        self.declare_parameter("gripper_topic", "/gripper_controller/commands")
-        self.declare_parameter("gripper_open_position", 0.2)
-        self.declare_parameter("gripper_close_position", 1.1)
-        self.declare_parameter("hub_digital_output_topic", "/hub/digital_output")
-        self.declare_parameter("hub_electromagnet_channel", 2.0)
-        self.declare_parameter("petanque_param_service", "/petanque_throw/set_parameters")
-        self.declare_parameter("petanque_total_duration_param", "total_duration")
-        self.declare_parameter(
-            "petanque_angle_between_start_and_finish_param",
-            "angle_between_start_and_finish",
-        )
-        self.declare_parameter("petanque_alpha_param", "alpha")
-        self.declare_parameter(
-            "measure_request_image_topic", "/petanque/measure/request_image/compressed"
-        )
-        self.declare_parameter(
-            "measure_result_image_topic", "/petanque/measure/result_image/compressed"
-        )
-        self.declare_parameter(
-            "measure_result_vectors_topic", "/petanque/measure/result_vectors"
-        )
-        self.declare_parameter("sandbox_ee_pose_topic", "/sandbox_controller/ee_pose")
-        self.declare_parameter(
-            "sandbox_velocity_command_topic", "/sandbox_controller/velocity_command"
-        )
-        self.declare_parameter("sandbox_joint_pose_topic", "/sandbox_controller/joint_pose")
-        self.declare_parameter("param_call_timeout_sec", 1.5)
+        declare_tablet_interface_parameters(self)
+        config = load_tablet_interface_config(self)
 
-        self.teleop_cmd_topic = self.get_parameter("teleop_cmd_topic").value
-        self.publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
-        self.linear_scale = float(self.get_parameter("linear_scale").value)
-        self.angular_scale = float(self.get_parameter("angular_scale").value)
-        self.swap_xy = bool(self.get_parameter("swap_xy").value)
-        linear_axes_param = list(self.get_parameter("linear_axes").value)
-        linear_signs_param = list(self.get_parameter("linear_signs").value)
-        angular_axes_param = list(self.get_parameter("angular_axes").value)
-        angular_signs_param = list(self.get_parameter("angular_signs").value)
-        self.default_mode = int(self.get_parameter("default_mode").value)
-        self.accept_mode_from_client = bool(self.get_parameter("accept_mode_from_client").value)
-        self.state_publish_hz = float(self.get_parameter("state_publish_hz").value)
-        self.bind_host = str(self.get_parameter("bind_host").value)
-        self.bind_port = int(self.get_parameter("bind_port").value)
-        self.ws_path = str(self.get_parameter("ws_path").value)
-        self.state_machine_topic = str(self.get_parameter("state_machine_topic").value)
-        self.gripper_topic = str(self.get_parameter("gripper_topic").value)
-        self.gripper_open_position = float(
-            self.get_parameter("gripper_open_position").value
+        self.teleop_cmd_topic = config.teleop_cmd_topic
+        self.publish_rate_hz = config.publish_rate_hz
+        self.linear_scale = config.linear_scale
+        self.angular_scale = config.angular_scale
+        self.swap_xy = config.swap_xy
+        linear_axes_param = config.linear_axes
+        linear_signs_param = config.linear_signs
+        angular_axes_param = config.angular_axes
+        angular_signs_param = config.angular_signs
+        self.default_mode = config.default_mode
+        self.accept_mode_from_client = config.accept_mode_from_client
+        self.state_publish_hz = config.state_publish_hz
+        self.bind_host = config.bind_host
+        self.bind_port = config.bind_port
+        self.ws_path = config.ws_path
+        self.state_machine_topic = config.state_machine_topic
+        self.gripper_topic = config.gripper_topic
+        self.gripper_open_position = config.gripper_open_position
+        self.gripper_close_position = config.gripper_close_position
+        self.hub_digital_output_topic = config.hub_digital_output_topic
+        self.hub_electromagnet_channel = config.hub_electromagnet_channel
+        self.petanque_param_service = config.petanque_param_service
+        self.petanque_total_duration_param = config.petanque_total_duration_param
+        self.petanque_angle_between_start_and_finish_param = (
+            config.petanque_angle_between_start_and_finish_param
         )
-        self.gripper_close_position = float(
-            self.get_parameter("gripper_close_position").value
-        )
-        self.hub_digital_output_topic = str(
-            self.get_parameter("hub_digital_output_topic").value
-        )
-        self.hub_electromagnet_channel = float(
-            self.get_parameter("hub_electromagnet_channel").value
-        )
-        self.petanque_param_service = str(self.get_parameter("petanque_param_service").value)
-        self.petanque_total_duration_param = str(
-            self.get_parameter("petanque_total_duration_param").value
-        )
-        self.petanque_angle_between_start_and_finish_param = str(
-            self.get_parameter("petanque_angle_between_start_and_finish_param").value
-        )
-        self.petanque_alpha_param = str(
-            self.get_parameter("petanque_alpha_param").value
-        )
-        self.measure_request_image_topic = str(
-            self.get_parameter("measure_request_image_topic").value
-        )
-        self.measure_result_image_topic = str(
-            self.get_parameter("measure_result_image_topic").value
-        )
-        self.measure_result_vectors_topic = str(
-            self.get_parameter("measure_result_vectors_topic").value
-        )
-        self.sandbox_ee_pose_topic = str(
-            self.get_parameter("sandbox_ee_pose_topic").value
-        )
-        self.sandbox_velocity_command_topic = str(
-            self.get_parameter("sandbox_velocity_command_topic").value
-        )
-        self.sandbox_joint_pose_topic = str(
-            self.get_parameter("sandbox_joint_pose_topic").value
-        )
-        self.param_call_timeout_sec = float(self.get_parameter("param_call_timeout_sec").value)
+        self.petanque_alpha_param = config.petanque_alpha_param
+        self.measure_request_image_topic = config.measure_request_image_topic
+        self.measure_result_image_topic = config.measure_result_image_topic
+        self.measure_result_vectors_topic = config.measure_result_vectors_topic
+        self.sandbox_ee_pose_topic = config.sandbox_ee_pose_topic
+        self.sandbox_velocity_command_topic = config.sandbox_velocity_command_topic
+        self.sandbox_joint_pose_topic = config.sandbox_joint_pose_topic
+        self.param_call_timeout_sec = config.param_call_timeout_sec
         try:
             self.linear_axes, self.linear_signs = normalize_mapping(
                 axes=linear_axes_param,
@@ -168,13 +109,12 @@ class TabletInterfaceNode(Node):
         self._measure_result_revision: int = 0
         self._measure_demo_vectors_json: str = MEASURE_DEMO_VECTORS_JSON
         self._measure_demo_image_data_url: str | None = (
-            self._load_default_measure_demo_image_data_url()
+            load_demo_measure_image_data_url(__file__)
         )
         self._ee_pose: Dict[str, float] | None = None
         self._tcp_speed_mps: float | None = None
         self._joint_positions: List[float] | None = None
-        self._ui_button_publishers: Dict[str, object] = {}
-        self._ui_scalar_publishers: Dict[str, object] = {}
+        self._generic_publishers = GenericPublisherCache(self)
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -420,44 +360,24 @@ class TabletInterfaceNode(Node):
         return True
 
     def publish_ui_button(self, topic: str, payload: str) -> bool:
-        normalized_topic = topic.strip()
-        if not normalized_topic:
-            self.get_logger().warning("UI button topic is empty")
+        ok = self._generic_publishers.publish_string(topic, payload)
+        if not ok:
             return False
-
-        publisher = self._ui_button_publishers.get(normalized_topic)
-        if publisher is None:
-            publisher = self.create_publisher(String, normalized_topic, 10)
-            self._ui_button_publishers[normalized_topic] = publisher
-
-        msg = String()
-        msg.data = payload
-        publisher.publish(msg)
         self.get_logger().info(
             "Published generic UI button: topic={0} payload={1}".format(
-                normalized_topic,
+                topic.strip(),
                 payload,
             )
         )
         return True
 
     def publish_ui_scalar(self, topic: str, value: float) -> bool:
-        normalized_topic = topic.strip()
-        if not normalized_topic:
-            self.get_logger().warning("UI scalar topic is empty")
+        ok = self._generic_publishers.publish_float(topic, value)
+        if not ok:
             return False
-
-        publisher = self._ui_scalar_publishers.get(normalized_topic)
-        if publisher is None:
-            publisher = self.create_publisher(Float64, normalized_topic, 10)
-            self._ui_scalar_publishers[normalized_topic] = publisher
-
-        msg = Float64()
-        msg.data = float(value)
-        publisher.publish(msg)
         self.get_logger().info(
             "Published generic UI scalar: topic={0} value={1:.3f}".format(
-                normalized_topic,
+                topic.strip(),
                 float(value),
             )
         )
@@ -506,7 +426,7 @@ class TabletInterfaceNode(Node):
         )
 
     def publish_measure_request_image(self, image_data_url: str) -> bool:
-        decoded = self._decode_image_data_url(image_data_url)
+        decoded = decode_image_data_url(image_data_url)
         if decoded is None:
             self.get_logger().warning("Invalid measure image_data_url payload")
             return False
@@ -531,7 +451,7 @@ class TabletInterfaceNode(Node):
             vectors_json = self._measure_result_vectors_json
             updated_at_ms = self._measure_result_updated_at_ms
             if (
-                self._is_legacy_fake_measure_vectors(vectors_json)
+                is_legacy_fake_measure_vectors(vectors_json)
                 and self._measure_demo_image_data_url is not None
             ):
                 image_data_url = self._measure_demo_image_data_url
@@ -545,7 +465,7 @@ class TabletInterfaceNode(Node):
             }
 
     def _on_measure_result_image(self, msg: CompressedImage) -> None:
-        image_data_url = self._encode_compressed_image_data_url(msg)
+        image_data_url = encode_compressed_image_data_url(msg)
         if not image_data_url:
             self.get_logger().warning("Received empty measure result image")
             return
@@ -599,69 +519,6 @@ class TabletInterfaceNode(Node):
     def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
         with self._lock:
             self._joint_positions = [float(value) for value in msg.data]
-
-    def _decode_image_data_url(self, image_data_url: str) -> tuple[str, bytes] | None:
-        raw = image_data_url.strip()
-        if not raw.startswith("data:image/"):
-            return None
-        header, separator, payload = raw.partition(",")
-        if separator != ",":
-            return None
-        if ";base64" not in header:
-            return None
-        mime = header[len("data:") : header.index(";base64")]
-        image_format = mime.split("/")[-1] or "jpeg"
-        try:
-            image_bytes = base64.b64decode(payload, validate=True)
-        except (binascii.Error, ValueError):
-            return None
-        if not image_bytes:
-            return None
-        return image_format, image_bytes
-
-    def _encode_compressed_image_data_url(self, msg: CompressedImage) -> str:
-        if not msg.data:
-            return ""
-        image_format = (msg.format or "jpeg").strip().lower()
-        if "/" in image_format:
-            image_format = image_format.split("/")[-1]
-        if image_format == "jpg":
-            image_format = "jpeg"
-        encoded = base64.b64encode(bytes(msg.data)).decode("ascii")
-        return f"data:image/{image_format};base64,{encoded}"
-
-    def _load_default_measure_demo_image_data_url(self) -> str | None:
-        repo_root = Path(__file__).resolve().parents[2]
-        demo_image_path = repo_root / "extender_ui" / "src" / "assets" / "image_measures.png"
-        if not demo_image_path.is_file():
-            self.get_logger().warning(
-                f"Measure demo image not found: {demo_image_path}"
-            )
-            return None
-        try:
-            image_bytes = demo_image_path.read_bytes()
-        except OSError as exc:
-            self.get_logger().warning(
-                f"Failed to read measure demo image {demo_image_path}: {exc}"
-            )
-            return None
-        if not image_bytes:
-            self.get_logger().warning(
-                f"Measure demo image is empty: {demo_image_path}"
-            )
-            return None
-        encoded = base64.b64encode(image_bytes).decode("ascii")
-        return f"data:image/png;base64,{encoded}"
-
-    def _is_legacy_fake_measure_vectors(self, vectors_json: str | None) -> bool:
-        if not vectors_json:
-            return False
-        try:
-            parsed = json.loads(vectors_json)
-        except json.JSONDecodeError:
-            return False
-        source = parsed.get("source") if isinstance(parsed, dict) else None
-        return isinstance(source, str) and source.startswith("fake_opencv")
 
     def _set_petanque_double_parameter(self, *, parameter_name: str, value: float) -> bool:
         if not parameter_name:

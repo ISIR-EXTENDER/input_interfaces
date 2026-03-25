@@ -190,7 +190,7 @@ def test_petanque_cfg_invalid() -> None:
         PetanqueConfigMessage.model_validate(
             {
                 "type": "petanque_cfg",
-                "alpha": 20.5,
+                "alpha": 40.5,
             }
         )
 
@@ -315,6 +315,20 @@ def test_state_message_valid() -> None:
     assert msg.ee_pose.z == pytest.approx(0.4)
     assert msg.tcp_speed_mps == pytest.approx(0.05)
     assert msg.joint_positions == pytest.approx([0.1, 0.2, 0.3])
+
+
+def test_state_message_valid_without_recent_command() -> None:
+    payload = {
+        "type": "state",
+        "connected": False,
+        "cmd_age_ms": None,
+        "watchdog_timeout_ms": 0,
+        "last_seq": 0,
+        "publishing_rate_hz": 30.0,
+        "current_mode": 0,
+    }
+    msg = StateMessage.model_validate(payload)
+    assert msg.cmd_age_ms is None
 
 
 @pytest.mark.parametrize(

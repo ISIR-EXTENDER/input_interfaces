@@ -106,7 +106,7 @@ class PositionMessage(BaseModel):
 class StateMessage(BaseModel):
     type: Literal["state"]
     connected: bool
-    cmd_age_ms: conint(strict=True, ge=0)
+    cmd_age_ms: conint(strict=True, ge=0) | None = None
     watchdog_timeout_ms: conint(strict=True, ge=0)
     last_seq: conint(strict=True, ge=0)
     publishing_rate_hz: confloat(strict=True, ge=0)
