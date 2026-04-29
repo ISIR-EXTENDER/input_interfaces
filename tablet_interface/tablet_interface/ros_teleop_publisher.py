@@ -1,22 +1,30 @@
 from __future__ import annotations
 
-import base64
-import binascii
 import json
 import threading
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import rclpy
 from rclpy.node import Node
-from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue
 from rcl_interfaces.srv import SetParameters
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import PoseStamped, Twist, TwistStamped
 from sensor_msgs.msg import CompressedImage
 from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
 
 from extender_msgs.msg import TeleopCommand
 
+from tablet_interface.config import (
+    declare_tablet_interface_parameters,
+    load_tablet_interface_config,
+)
+from tablet_interface.actuator_bridge import ActuatorBridge
+from tablet_interface.camera_bridge import CameraBridge
+from tablet_interface.generic_publishers import GenericPublisherCache
+from tablet_interface.measure_bridge import MeasureBridge
+from tablet_interface.measure_codec import load_demo_measure_image_data_url
+from tablet_interface.petanque_bridge import PetanqueBridge
+from tablet_interface.runtime_state import TabletRuntimeState
+from tablet_interface.sandbox_bridge import SandboxBridge
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 
 MEASURE_DEMO_VECTORS_JSON = json.dumps(
@@ -32,96 +40,43 @@ class TabletInterfaceNode(Node):
     def __init__(self) -> None:
         super().__init__("tablet_interface_node")
 
-        self.declare_parameter("teleop_cmd_topic", "/teleop_cmd")
-        self.declare_parameter("publish_rate_hz", 30.0)
-        self.declare_parameter("linear_scale", 0.2)
-        self.declare_parameter("angular_scale", 0.5)
-        self.declare_parameter("swap_xy", False)
-        self.declare_parameter("linear_axes", [0, 1, 2])
-        self.declare_parameter("linear_signs", [1.0, 1.0, 1.0])
-        self.declare_parameter("angular_axes", [0, 1, 2])
-        self.declare_parameter("angular_signs", [1.0, 1.0, 1.0])
-        self.declare_parameter("default_mode", 0)
-        self.declare_parameter("accept_mode_from_client", True)
-        self.declare_parameter("state_publish_hz", 5.0)
-        self.declare_parameter("bind_host", "0.0.0.0")
-        self.declare_parameter("bind_port", 8765)
-        self.declare_parameter("ws_path", "/ws/control")
-        self.declare_parameter(
-            "state_machine_topic", "/petanque_state_machine/change_state"
-        )
-        self.declare_parameter("gripper_topic", "/gripper_controller/commands")
-        self.declare_parameter("gripper_open_position", 0.2)
-        self.declare_parameter("gripper_close_position", 1.1)
-        self.declare_parameter("hub_digital_output_topic", "/hub/digital_output")
-        self.declare_parameter("hub_electromagnet_channel", 2.0)
-        self.declare_parameter("petanque_param_service", "/petanque_throw/set_parameters")
-        self.declare_parameter("petanque_total_duration_param", "total_duration")
-        self.declare_parameter(
-            "petanque_angle_between_start_and_finish_param",
-            "angle_between_start_and_finish",
-        )
-        self.declare_parameter("petanque_alpha_param", "alpha")
-        self.declare_parameter(
-            "measure_request_image_topic", "/petanque/measure/request_image/compressed"
-        )
-        self.declare_parameter(
-            "measure_result_image_topic", "/petanque/measure/result_image/compressed"
-        )
-        self.declare_parameter(
-            "measure_result_vectors_topic", "/petanque/measure/result_vectors"
-        )
-        self.declare_parameter("param_call_timeout_sec", 1.5)
+        declare_tablet_interface_parameters(self)
+        config = load_tablet_interface_config(self)
 
-        self.teleop_cmd_topic = self.get_parameter("teleop_cmd_topic").value
-        self.publish_rate_hz = float(self.get_parameter("publish_rate_hz").value)
-        self.linear_scale = float(self.get_parameter("linear_scale").value)
-        self.angular_scale = float(self.get_parameter("angular_scale").value)
-        self.swap_xy = bool(self.get_parameter("swap_xy").value)
-        linear_axes_param = list(self.get_parameter("linear_axes").value)
-        linear_signs_param = list(self.get_parameter("linear_signs").value)
-        angular_axes_param = list(self.get_parameter("angular_axes").value)
-        angular_signs_param = list(self.get_parameter("angular_signs").value)
-        self.default_mode = int(self.get_parameter("default_mode").value)
-        self.accept_mode_from_client = bool(self.get_parameter("accept_mode_from_client").value)
-        self.state_publish_hz = float(self.get_parameter("state_publish_hz").value)
-        self.bind_host = str(self.get_parameter("bind_host").value)
-        self.bind_port = int(self.get_parameter("bind_port").value)
-        self.ws_path = str(self.get_parameter("ws_path").value)
-        self.state_machine_topic = str(self.get_parameter("state_machine_topic").value)
-        self.gripper_topic = str(self.get_parameter("gripper_topic").value)
-        self.gripper_open_position = float(
-            self.get_parameter("gripper_open_position").value
+        self.teleop_cmd_topic = config.teleop_cmd_topic
+        self.publish_rate_hz = config.publish_rate_hz
+        self.linear_scale = config.linear_scale
+        self.angular_scale = config.angular_scale
+        self.swap_xy = config.swap_xy
+        linear_axes_param = config.linear_axes
+        linear_signs_param = config.linear_signs
+        angular_axes_param = config.angular_axes
+        angular_signs_param = config.angular_signs
+        self.default_mode = config.default_mode
+        self.accept_mode_from_client = config.accept_mode_from_client
+        self.state_publish_hz = config.state_publish_hz
+        self.bind_host = config.bind_host
+        self.bind_port = config.bind_port
+        self.ws_path = config.ws_path
+        self.state_machine_topic = config.state_machine_topic
+        self.gripper_topic = config.gripper_topic
+        self.gripper_open_position = config.gripper_open_position
+        self.gripper_close_position = config.gripper_close_position
+        self.hub_digital_output_topic = config.hub_digital_output_topic
+        self.hub_electromagnet_channel = config.hub_electromagnet_channel
+        self.petanque_param_service = config.petanque_param_service
+        self.petanque_total_duration_param = config.petanque_total_duration_param
+        self.petanque_angle_between_start_and_finish_param = (
+            config.petanque_angle_between_start_and_finish_param
         )
-        self.gripper_close_position = float(
-            self.get_parameter("gripper_close_position").value
-        )
-        self.hub_digital_output_topic = str(
-            self.get_parameter("hub_digital_output_topic").value
-        )
-        self.hub_electromagnet_channel = float(
-            self.get_parameter("hub_electromagnet_channel").value
-        )
-        self.petanque_param_service = str(self.get_parameter("petanque_param_service").value)
-        self.petanque_total_duration_param = str(
-            self.get_parameter("petanque_total_duration_param").value
-        )
-        self.petanque_angle_between_start_and_finish_param = str(
-            self.get_parameter("petanque_angle_between_start_and_finish_param").value
-        )
-        self.petanque_alpha_param = str(
-            self.get_parameter("petanque_alpha_param").value
-        )
-        self.measure_request_image_topic = str(
-            self.get_parameter("measure_request_image_topic").value
-        )
-        self.measure_result_image_topic = str(
-            self.get_parameter("measure_result_image_topic").value
-        )
-        self.measure_result_vectors_topic = str(
-            self.get_parameter("measure_result_vectors_topic").value
-        )
-        self.param_call_timeout_sec = float(self.get_parameter("param_call_timeout_sec").value)
+        self.petanque_alpha_param = config.petanque_alpha_param
+        self.measure_request_image_topic = config.measure_request_image_topic
+        self.measure_result_image_topic = config.measure_result_image_topic
+        self.measure_result_vectors_topic = config.measure_result_vectors_topic
+        self.sandbox_ee_pose_topic = config.sandbox_ee_pose_topic
+        self.sandbox_velocity_command_topic = config.sandbox_velocity_command_topic
+        self.sandbox_joint_pose_topic = config.sandbox_joint_pose_topic
+        self.param_call_timeout_sec = config.param_call_timeout_sec
         try:
             self.linear_axes, self.linear_signs = normalize_mapping(
                 axes=linear_axes_param,
@@ -140,22 +95,21 @@ class TabletInterfaceNode(Node):
             self.angular_axes = (0, 1, 2)
             self.angular_signs = (1.0, 1.0, 1.0)
 
-        self._lock = threading.Lock()
+        self._cmd_lock = threading.Lock()
         self._latest_twist = Twist()
-        self._current_mode: int = self.default_mode
-        self._last_cmd_received_ms: Optional[int] = None
-        self._last_seq: int = 0
-        self._connected: bool = False
-        self._last_events: List[str] = []
-        self._gripper_state: str = "unknown"
-        self._measure_result_image_data_url: str | None = None
-        self._measure_result_vectors_json: str | None = None
-        self._measure_result_updated_at_ms: int | None = None
-        self._measure_result_revision: int = 0
         self._measure_demo_vectors_json: str = MEASURE_DEMO_VECTORS_JSON
         self._measure_demo_image_data_url: str | None = (
-            self._load_default_measure_demo_image_data_url()
+            load_demo_measure_image_data_url(__file__)
         )
+        self._runtime_state = TabletRuntimeState(
+            default_mode=self.default_mode,
+            publish_rate_hz=self.publish_rate_hz,
+            gripper_open_position=self.gripper_open_position,
+            gripper_close_position=self.gripper_close_position,
+            measure_demo_vectors_json=self._measure_demo_vectors_json,
+            measure_demo_image_data_url=self._measure_demo_image_data_url,
+        )
+        self._generic_publishers = GenericPublisherCache(self)
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -185,8 +139,74 @@ class TabletInterfaceNode(Node):
             self._on_measure_result_vectors,
             10,
         )
+        self._sandbox_ee_pose_subscription = (
+            self.create_subscription(
+                PoseStamped,
+                self.sandbox_ee_pose_topic,
+                self._on_sandbox_ee_pose,
+                10,
+            )
+            if self.sandbox_ee_pose_topic
+            else None
+        )
+        self._sandbox_velocity_subscription = (
+            self.create_subscription(
+                TwistStamped,
+                self.sandbox_velocity_command_topic,
+                self._on_sandbox_velocity_command,
+                10,
+            )
+            if self.sandbox_velocity_command_topic
+            else None
+        )
+        self._sandbox_joint_pose_subscription = (
+            self.create_subscription(
+                Float64MultiArray,
+                self.sandbox_joint_pose_topic,
+                self._on_sandbox_joint_pose,
+                10,
+            )
+            if self.sandbox_joint_pose_topic
+            else None
+        )
         self._petanque_param_client = self.create_client(
             SetParameters, self.petanque_param_service
+        )
+        self._petanque_bridge = PetanqueBridge(
+            logger=self.get_logger(),
+            state_cmd_publisher=self._state_cmd_publisher,
+            param_client=self._petanque_param_client,
+            param_service=self.petanque_param_service,
+            total_duration_param=self.petanque_total_duration_param,
+            angle_between_start_and_finish_param=(
+                self.petanque_angle_between_start_and_finish_param
+            ),
+            alpha_param=self.petanque_alpha_param,
+            param_call_timeout_sec=self.param_call_timeout_sec,
+        )
+        self._measure_bridge = MeasureBridge(
+            logger=self.get_logger(),
+            request_image_publisher=self._measure_request_image_publisher,
+            runtime_state=self._runtime_state,
+            request_image_topic=self.measure_request_image_topic,
+            result_image_topic=self.measure_result_image_topic,
+            result_vectors_topic=self.measure_result_vectors_topic,
+        )
+        self._sandbox_bridge = SandboxBridge(runtime_state=self._runtime_state)
+        self._actuator_bridge = ActuatorBridge(
+            logger=self.get_logger(),
+            gripper_publisher=self._gripper_publisher,
+            hub_digital_output_publisher=self._hub_digital_output_publisher,
+            runtime_state=self._runtime_state,
+            gripper_topic=self.gripper_topic,
+            gripper_open_position=self.gripper_open_position,
+            gripper_close_position=self.gripper_close_position,
+            hub_digital_output_topic=self.hub_digital_output_topic,
+            hub_electromagnet_channel=self.hub_electromagnet_channel,
+        )
+        self._camera_bridge = CameraBridge(
+            logger=self.get_logger(),
+            publishers=self._generic_publishers,
         )
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
@@ -253,6 +273,13 @@ class TabletInterfaceNode(Node):
                 self.measure_result_vectors_topic,
             )
         )
+        self.get_logger().info(
+            "Sandbox feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2}".format(
+                self.sandbox_ee_pose_topic or "disabled",
+                self.sandbox_velocity_command_topic or "disabled",
+                self.sandbox_joint_pose_topic or "disabled",
+            )
+        )
 
     def map_and_scale_cmd(
         self,
@@ -295,332 +322,100 @@ class TabletInterfaceNode(Node):
         if not self.accept_mode_from_client:
             mode = self.default_mode
 
-        with self._lock:
+        with self._cmd_lock:
             self._latest_twist = self._copy_twist(twist)
-            self._current_mode = int(mode)
-            self._last_cmd_received_ms = int(received_ms)
-            self._last_seq = int(seq)
+        self._runtime_state.update_command_meta(
+            mode=mode,
+            seq=seq,
+            received_ms=received_ms,
+        )
 
     def send_state_command(self, command: str) -> bool:
-        normalized = command.strip().lower()
-        if normalized not in {
-            "teleop",
-            "activate_throw",
-            "go_to_start",
-            "throw",
-            "pick_up",
-            "stop",
-            "test_loop",
-        }:
-            self.get_logger().warning(f"Invalid state machine command: {command}")
-            return False
-
-        msg = String()
-        msg.data = normalized
-        self._state_cmd_publisher.publish(msg)
-        self.get_logger().info(f"Published state machine command: {normalized}")
-        return True
+        return self._petanque_bridge.send_state_command(command)
 
     def set_gripper(self, action: str) -> bool:
-        normalized = action.strip().lower()
-        if normalized not in {"open", "close"}:
-            self.get_logger().warning(f"Invalid gripper action: {action}")
-            return False
+        return self._actuator_bridge.set_gripper(action)
 
-        position = (
-            self.gripper_open_position
-            if normalized == "open"
-            else self.gripper_close_position
-        )
-        msg = Float64MultiArray()
-        msg.data = [float(position)]
-        self._gripper_publisher.publish(msg)
-        with self._lock:
-            self._gripper_state = normalized
+    def set_electromagnet(self, enabled: bool) -> bool:
+        return self._actuator_bridge.set_electromagnet(enabled)
+
+    def publish_ui_button(self, topic: str, payload: str) -> bool:
+        ok = self._generic_publishers.publish_string(topic, payload)
+        if not ok:
+            return False
         self.get_logger().info(
-            "Published gripper command: action={0} topic={1} value={2:.3f}".format(
-                normalized,
-                self.gripper_topic,
-                position,
+            "Published generic UI button: topic={0} payload={1}".format(
+                topic.strip(),
+                payload,
             )
         )
         return True
 
-    def set_electromagnet(self, enabled: bool) -> bool:
-        msg = Float32MultiArray()
-        # Hardware wiring for the electromagnet is active-low:
-        # 0.0 => magnet ON, 1.0 => magnet OFF.
-        msg.data = [
-            float(self.hub_electromagnet_channel),
-            0.0 if enabled else 1.0,
-        ]
-        self._hub_digital_output_publisher.publish(msg)
+    def publish_ui_scalar(self, topic: str, value: float) -> bool:
+        ok = self._generic_publishers.publish_float(topic, value)
+        if not ok:
+            return False
         self.get_logger().info(
-            "Published hub digital output: channel={0:.1f} value={1:.1f}".format(
-                self.hub_electromagnet_channel,
-                msg.data[1],
+            "Published generic UI scalar: topic={0} value={1:.3f}".format(
+                topic.strip(),
+                float(value),
             )
         )
         return True
 
     def _on_gripper_command(self, msg: Float64MultiArray) -> None:
-        if not msg.data:
-            return
-        self._set_gripper_state_from_position(float(msg.data[0]))
+        self._actuator_bridge.on_gripper_command(msg)
 
     def _set_gripper_state_from_position(self, position: float) -> None:
-        open_distance = abs(position - float(self.gripper_open_position))
-        close_distance = abs(position - float(self.gripper_close_position))
-        state = "open" if open_distance <= close_distance else "close"
-        with self._lock:
-            self._gripper_state = state
+        self._runtime_state.update_gripper_position(position)
 
     def set_petanque_total_duration(self, total_duration: float) -> bool:
-        if total_duration <= 0.0:
-            self.get_logger().warning(
-                f"Invalid total_duration={total_duration:.3f}; expected > 0"
-            )
-            return False
-
-        return self._set_petanque_double_parameter(
-            parameter_name=self.petanque_total_duration_param,
-            value=float(total_duration),
-        )
+        return self._petanque_bridge.set_total_duration(total_duration)
 
     def set_petanque_angle_between_start_and_finish(self, angle: float) -> bool:
-        return self._set_petanque_double_parameter(
-            parameter_name=self.petanque_angle_between_start_and_finish_param,
-            value=float(angle),
-        )
+        return self._petanque_bridge.set_angle_between_start_and_finish(angle)
 
     def set_petanque_alpha(self, alpha: float) -> bool:
-        if alpha < 0.0 or alpha > 40.0:
-            self.get_logger().warning(
-                f"Invalid alpha={alpha:.3f}; expected in [0, 40]"
-            )
-            return False
-
-        return self._set_petanque_double_parameter(
-            parameter_name=self.petanque_alpha_param,
-            value=float(alpha),
-        )
+        return self._petanque_bridge.set_alpha(alpha)
 
     def publish_measure_request_image(self, image_data_url: str) -> bool:
-        decoded = self._decode_image_data_url(image_data_url)
-        if decoded is None:
-            self.get_logger().warning("Invalid measure image_data_url payload")
-            return False
-
-        image_format, image_bytes = decoded
-        msg = CompressedImage()
-        msg.format = image_format
-        msg.data = image_bytes
-        self._measure_request_image_publisher.publish(msg)
-        self.get_logger().info(
-            "Published measure request image: topic={0} format={1} bytes={2}".format(
-                self.measure_request_image_topic,
-                image_format,
-                len(image_bytes),
-            )
-        )
-        return True
+        return self._measure_bridge.publish_request_image(image_data_url)
 
     def get_measure_result_snapshot(self) -> Dict[str, object]:
-        with self._lock:
-            image_data_url = self._measure_result_image_data_url
-            vectors_json = self._measure_result_vectors_json
-            updated_at_ms = self._measure_result_updated_at_ms
-            if (
-                self._is_legacy_fake_measure_vectors(vectors_json)
-                and self._measure_demo_image_data_url is not None
-            ):
-                image_data_url = self._measure_demo_image_data_url
-                vectors_json = self._measure_demo_vectors_json
-                updated_at_ms = None
-            return {
-                "revision": int(self._measure_result_revision),
-                "image_data_url": image_data_url,
-                "vectors_json": vectors_json,
-                "updated_at_ms": updated_at_ms,
-            }
+        return self._measure_bridge.get_result_snapshot()
 
     def _on_measure_result_image(self, msg: CompressedImage) -> None:
-        image_data_url = self._encode_compressed_image_data_url(msg)
-        if not image_data_url:
-            self.get_logger().warning("Received empty measure result image")
-            return
-
-        now_ms = self._now_ms()
-        with self._lock:
-            self._measure_result_image_data_url = image_data_url
-            self._measure_result_updated_at_ms = now_ms
-            self._measure_result_revision += 1
-
-        self.get_logger().info(
-            "Received measure result image: topic={0} format={1} bytes={2}".format(
-                self.measure_result_image_topic,
-                msg.format or "jpeg",
-                len(msg.data),
-            )
-        )
+        self._measure_bridge.on_result_image(msg, now_ms=self._now_ms())
 
     def _on_measure_result_vectors(self, msg: String) -> None:
-        now_ms = self._now_ms()
-        with self._lock:
-            self._measure_result_vectors_json = msg.data
-            self._measure_result_updated_at_ms = now_ms
-            self._measure_result_revision += 1
+        self._measure_bridge.on_result_vectors(msg, now_ms=self._now_ms())
 
-        self.get_logger().info(
-            "Received measure vectors: topic={0} chars={1}".format(
-                self.measure_result_vectors_topic,
-                len(msg.data),
-            )
+    def _on_sandbox_ee_pose(self, msg: PoseStamped) -> None:
+        self._sandbox_bridge.on_ee_pose(msg)
+
+    def _on_sandbox_velocity_command(self, msg: TwistStamped) -> None:
+        self._sandbox_bridge.on_velocity_command(msg)
+
+    def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
+        self._sandbox_bridge.on_joint_pose(msg)
+
+    def publish_camera_frame(self, *, topic: str, image_data_url: str) -> bool:
+        return self._camera_bridge.publish_frame(
+            topic=topic,
+            image_data_url=image_data_url,
         )
-
-    def _decode_image_data_url(self, image_data_url: str) -> tuple[str, bytes] | None:
-        raw = image_data_url.strip()
-        if not raw.startswith("data:image/"):
-            return None
-        header, separator, payload = raw.partition(",")
-        if separator != ",":
-            return None
-        if ";base64" not in header:
-            return None
-        mime = header[len("data:") : header.index(";base64")]
-        image_format = mime.split("/")[-1] or "jpeg"
-        try:
-            image_bytes = base64.b64decode(payload, validate=True)
-        except (binascii.Error, ValueError):
-            return None
-        if not image_bytes:
-            return None
-        return image_format, image_bytes
-
-    def _encode_compressed_image_data_url(self, msg: CompressedImage) -> str:
-        if not msg.data:
-            return ""
-        image_format = (msg.format or "jpeg").strip().lower()
-        if "/" in image_format:
-            image_format = image_format.split("/")[-1]
-        if image_format == "jpg":
-            image_format = "jpeg"
-        encoded = base64.b64encode(bytes(msg.data)).decode("ascii")
-        return f"data:image/{image_format};base64,{encoded}"
-
-    def _load_default_measure_demo_image_data_url(self) -> str | None:
-        repo_root = Path(__file__).resolve().parents[2]
-        demo_image_path = repo_root / "extender_ui" / "src" / "assets" / "image_measures.png"
-        if not demo_image_path.is_file():
-            self.get_logger().warning(
-                f"Measure demo image not found: {demo_image_path}"
-            )
-            return None
-        try:
-            image_bytes = demo_image_path.read_bytes()
-        except OSError as exc:
-            self.get_logger().warning(
-                f"Failed to read measure demo image {demo_image_path}: {exc}"
-            )
-            return None
-        if not image_bytes:
-            self.get_logger().warning(
-                f"Measure demo image is empty: {demo_image_path}"
-            )
-            return None
-        encoded = base64.b64encode(image_bytes).decode("ascii")
-        return f"data:image/png;base64,{encoded}"
-
-    def _is_legacy_fake_measure_vectors(self, vectors_json: str | None) -> bool:
-        if not vectors_json:
-            return False
-        try:
-            parsed = json.loads(vectors_json)
-        except json.JSONDecodeError:
-            return False
-        source = parsed.get("source") if isinstance(parsed, dict) else None
-        return isinstance(source, str) and source.startswith("fake_opencv")
-
-    def _set_petanque_double_parameter(self, *, parameter_name: str, value: float) -> bool:
-        if not parameter_name:
-            self.get_logger().warning("Petanque parameter name is empty")
-            return False
-
-        if not self._petanque_param_client.wait_for_service(
-            timeout_sec=self.param_call_timeout_sec
-        ):
-            self.get_logger().warning(
-                f"Service unavailable: {self.petanque_param_service}"
-            )
-            return False
-
-        param = Parameter(
-            name=parameter_name,
-            value=ParameterValue(
-                type=ParameterType.PARAMETER_DOUBLE,
-                double_value=float(value),
-            ),
-        )
-        req = SetParameters.Request(parameters=[param])
-        future = self._petanque_param_client.call_async(req)
-
-        done = threading.Event()
-        future.add_done_callback(lambda _: done.set())
-        if not done.wait(timeout=self.param_call_timeout_sec):
-            self.get_logger().warning(
-                f"Timeout while setting parameter {parameter_name}"
-            )
-            return False
-
-        try:
-            result = future.result()
-        except Exception as exc:  # pragma: no cover
-            self.get_logger().warning(f"SetParameters call failed: {exc}")
-            return False
-
-        if not result or not result.results:
-            self.get_logger().warning("SetParameters returned empty result")
-            return False
-
-        if not result.results[0].successful:
-            reason = result.results[0].reason or "unknown error"
-            self.get_logger().warning(
-                f"Failed to set {parameter_name}: {reason}"
-            )
-            return False
-
-        self.get_logger().info(
-            f"Updated {parameter_name}={value:.3f}"
-        )
-        return True
 
     def set_connected(self, connected: bool) -> None:
-        with self._lock:
-            self._connected = bool(connected)
+        self._runtime_state.set_connected(connected)
 
     def get_state(self) -> Dict[str, object]:
-        with self._lock:
-            now_ms = self._now_ms()
-            cmd_age_ms = None
-            if self._last_cmd_received_ms is not None:
-                cmd_age_ms = int(now_ms) - int(self._last_cmd_received_ms)
-
-            return {
-                "connected": self._connected,
-                "cmd_age_ms": cmd_age_ms,
-                "watchdog_timeout_ms": 0,
-                "last_seq": self._last_seq,
-                "publishing_rate_hz": float(self.publish_rate_hz),
-                "current_mode": int(self._current_mode),
-                "gripper_state": self._gripper_state,
-                "events": list(self._last_events),
-            }
+        return self._runtime_state.get_state(now_ms=self._now_ms())
 
     def _on_timer(self) -> None:
-        with self._lock:
+        with self._cmd_lock:
             twist = self._copy_twist(self._latest_twist)
-            mode = int(self._current_mode)
-            self._last_events = []
+        mode = self._runtime_state.get_current_mode()
+        self._runtime_state.clear_events()
 
         msg = TeleopCommand()
         msg.twist = twist

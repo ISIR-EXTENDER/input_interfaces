@@ -2,6 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from tablet_interface.ws_models import (
+    CameraFrameMessage,
     CmdMessage,
     EventMessage,
     GripperCmdMessage,
@@ -12,6 +13,7 @@ from tablet_interface.ws_models import (
     StateCmdMessage,
     StateMessage,
     UiButtonMessage,
+    UiScalarMessage,
 )
 
 
@@ -189,7 +191,7 @@ def test_petanque_cfg_invalid() -> None:
         PetanqueConfigMessage.model_validate(
             {
                 "type": "petanque_cfg",
-                "alpha": 20.5,
+                "alpha": 40.5,
             }
         )
 
@@ -221,6 +223,68 @@ def test_ui_button_invalid() -> None:
                 "payload": "throw",
             }
         )
+
+
+def test_camera_frame_valid() -> None:
+    payload = {
+        "type": "camera_frame",
+        "topic": "/tablet/camera/front/compressed",
+        "image_data_url": "data:image/jpeg;base64,AAAAAAAAAAAAAA==",
+        "widget_id": "camera-front",
+    }
+    msg = CameraFrameMessage.model_validate(payload)
+    assert msg.topic == "/tablet/camera/front/compressed"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "type": "camera_frame",
+            "topic": "",
+            "image_data_url": "data:image/jpeg;base64,AAAAAAAAAAAAAA==",
+        },
+        {
+            "type": "camera_frame",
+            "topic": "/tablet/camera/front/compressed",
+            "image_data_url": "not-a-data-url",
+        },
+    ],
+)
+def test_camera_frame_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        CameraFrameMessage.model_validate(payload)
+
+
+def test_ui_scalar_valid() -> None:
+    payload = {
+        "type": "ui_scalar",
+        "topic": "/sandbox/max_velocity",
+        "value": 1.25,
+        "widget_id": "sandbox-speed",
+    }
+    msg = UiScalarMessage.model_validate(payload)
+    assert msg.value == pytest.approx(1.25)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "type": "ui_scalar",
+            "topic": "",
+            "value": 1.0,
+        },
+        {
+            "type": "ui_scalar",
+            "topic": "/sandbox/max_velocity",
+            "value": "fast",
+        },
+    ],
+)
+def test_ui_scalar_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        UiScalarMessage.model_validate(payload)
 
 
 def test_measure_request_valid() -> None:
@@ -272,10 +336,31 @@ def test_state_message_valid() -> None:
         "publishing_rate_hz": 30.0,
         "current_mode": 1,
         "gripper_state": "open",
+        "ee_pose": {"x": 0.2, "y": -0.1, "z": 0.4},
+        "tcp_speed_mps": 0.05,
+        "joint_positions": [0.1, 0.2, 0.3],
     }
     msg = StateMessage.model_validate(payload)
     assert msg.current_mode == 1
     assert msg.gripper_state == "open"
+    assert msg.ee_pose is not None
+    assert msg.ee_pose.z == pytest.approx(0.4)
+    assert msg.tcp_speed_mps == pytest.approx(0.05)
+    assert msg.joint_positions == pytest.approx([0.1, 0.2, 0.3])
+
+
+def test_state_message_valid_without_recent_command() -> None:
+    payload = {
+        "type": "state",
+        "connected": False,
+        "cmd_age_ms": None,
+        "watchdog_timeout_ms": 0,
+        "last_seq": 0,
+        "publishing_rate_hz": 30.0,
+        "current_mode": 0,
+    }
+    msg = StateMessage.model_validate(payload)
+    assert msg.cmd_age_ms is None
 
 
 @pytest.mark.parametrize(

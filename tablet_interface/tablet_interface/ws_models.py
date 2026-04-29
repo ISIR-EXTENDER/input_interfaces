@@ -68,6 +68,26 @@ class UiButtonMessage(BaseModel):
     widget_id: str | None = None
 
 
+class UiScalarMessage(BaseModel):
+    type: Literal["ui_scalar"]
+    topic: str = Field(min_length=1)
+    value: confloat(allow_inf_nan=False)
+    widget_id: str | None = None
+
+
+class CameraFrameMessage(BaseModel):
+    type: Literal["camera_frame"]
+    topic: str = Field(min_length=1)
+    image_data_url: str = Field(min_length=32)
+    widget_id: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_image_data_url(self) -> "CameraFrameMessage":
+        if not self.image_data_url.startswith("data:image/"):
+            raise ValueError("camera_frame image_data_url must start with data:image/")
+        return self
+
+
 class MeasureRequestMessage(BaseModel):
     type: Literal["measure_request"]
     image_data_url: str = Field(min_length=32)
@@ -90,15 +110,24 @@ class MeasureResultMessage(BaseModel):
     updated_at_ms: conint(strict=True, ge=0) | None = None
 
 
+class PositionMessage(BaseModel):
+    x: confloat(allow_inf_nan=False)
+    y: confloat(allow_inf_nan=False)
+    z: confloat(allow_inf_nan=False)
+
+
 class StateMessage(BaseModel):
     type: Literal["state"]
     connected: bool
-    cmd_age_ms: conint(strict=True, ge=0)
+    cmd_age_ms: conint(strict=True, ge=0) | None = None
     watchdog_timeout_ms: conint(strict=True, ge=0)
     last_seq: conint(strict=True, ge=0)
     publishing_rate_hz: confloat(strict=True, ge=0)
     current_mode: conint(strict=True, ge=0, le=3)
     gripper_state: Literal["open", "close", "unknown"] | None = None
+    ee_pose: PositionMessage | None = None
+    tcp_speed_mps: confloat(ge=0.0, allow_inf_nan=False) | None = None
+    joint_positions: list[confloat(allow_inf_nan=False)] | None = None
 
 
 class EventMessage(BaseModel):
@@ -114,9 +143,12 @@ __all__ = [
     "GripperCmdMessage",
     "PetanqueConfigMessage",
     "UiButtonMessage",
+    "UiScalarMessage",
+    "CameraFrameMessage",
     "MeasureRequestMessage",
     "MeasureRefreshMessage",
     "MeasureResultMessage",
+    "PositionMessage",
     "StateMessage",
     "EventMessage",
     "Vector3Model",

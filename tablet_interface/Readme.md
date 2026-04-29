@@ -1,117 +1,73 @@
 # Tablet Interface
 
-ROS 2 input interface that publishes `/teleop_cmd` from a WebSocket client.
+`tablet_interface` is the ROS 2 websocket backend used by `extender_ui`. It translates generic UI messages into ROS topics and forwards robot feedback back to the UI.
 
-## Run the node
+## Architecture
+
+The backend now follows the same split as the UI:
+
+- generic core: websocket transport, teleop publishing, runtime state
+- bridges: isolated ROS-side behavior for each domain
+- compatibility layer: pétanque support kept intact during the refactor
+
+Main modules:
+
+- `ros_teleop_publisher.py`: node orchestration
+- `ws_server.py`, `ws_handlers.py`, `ws_models.py`: websocket transport and validation
+- `runtime_state.py`: shared backend state sent to the UI
+- `petanque_bridge.py`
+- `measure_bridge.py`
+- `sandbox_bridge.py`
+- `actuator_bridge.py`
+- `camera_bridge.py`
+
+## Main websocket contract
+
+- `teleop_cmd` -> publishes `extender_msgs/TeleopCommand`
+- `ui_button` -> publishes `std_msgs/String`
+- `ui_scalar` -> publishes `std_msgs/Float64`
+- `camera_frame` -> publishes `sensor_msgs/CompressedImage`
+
+Compatibility messages still supported for existing pétanque screens:
+
+- `state_cmd`
+- `petanque_cfg`
+- `measure_request`
+- `measure_refresh`
+
+## Sandbox path
+
+Minimal sandbox teleop flow:
+
+1. UI sends `teleop_cmd`
+2. `tablet_interface` republishes `/teleop_cmd`
+3. `sandbox_controller` consumes `/teleop_cmd`
+
+Sandbox feedback forwarded to UI state:
+
+- `ee_pose`
+- `tcp_speed_mps`
+- `joint_positions`
+
+## Camera direction
+
+The backend now accepts `camera_frame`, republishes it as ROS `CompressedImage`, and makes browser-captured frames available to ROS nodes. This is the preferred path for future camera, RGB-D, perception, and visual-servoing features.
+
+## Development
+
+This package uses the workspace-level `uv` config.
 
 ```bash
-ros2 run tablet_interface tablet_interface_node --ros-args --params-file config/tablet_interface_parameters_explorer.yaml
+cd /home/susana/workspace/extender_workspace
+uv sync
+cd src/input_interfaces/tablet_interface
+make run-node
+make test
 ```
 
-## Makefile (uv run)
+## Contributing
 
-Use the Makefile to run the node and tools with uv:
-
-```bash
-make -C . run-node
-make -C . run-ws-client
-make -C . test
-```
-
-## Developer WS client test
-
-The test client streams `cmd` messages at 50 Hz and prints `state` messages from the server.
-
-```bash
-python3 scripts/ws_client_test.py --host 127.0.0.1 --port 8765 --path /ws/control
-```
-
-### WebSocket command format
-
-UI sends normalized values in [-1, 1]. Backend applies axis mapping and scaling.
-
-```json
-{
-	"type": "teleop_cmd",
-	"seq": 42,
-	"mode": 0,
-	"linear": { "x": 0.2, "y": -0.1, "z": 0.0 },
-	"angular": { "x": 0.0, "y": 0.0, "z": 0.0 }
-}
-```
-
-For pétanque integration, backend also supports:
-
-```json
-{ "type": "state_cmd", "command": "teleop" }
-```
-
-Allowed `command` values: `teleop`, `activate_throw`, `go_to_start`, `throw`, `pick_up`, `stop`.
-These are published as `std_msgs/String` on `/petanque_state_machine/change_state`.
-
-```json
-{ "type": "petanque_cfg", "total_duration": 1.0 }
-```
-
-Supported `petanque_cfg` fields:
-- `total_duration` (`> 0`)
-- `angle_between_start_and_finish`
-- `alpha` (`0..20`)
-
-Each field updates the matching `/petanque_throw` parameter through
-`/petanque_throw/set_parameters`.
-
-For measure workflow:
-
-```json
-{
-  "type": "measure_request",
-  "image_data_url": "data:image/jpeg;base64,..."
-}
-```
-
-Publishes image to ROS topic:
-- `/petanque/measure/request_image/compressed` (`sensor_msgs/CompressedImage`)
-
-Frontend can request cached result:
-
-```json
-{ "type": "measure_refresh" }
-```
-
-Backend returns:
-
-```json
-{
-  "type": "measure_result",
-  "image_data_url": "data:image/jpeg;base64,...",
-  "vectors_json": "{\"distances\":[0.6]}",
-  "updated_at_ms": 123456
-}
-```
-
-Backend listens for OpenCV outputs on:
-- `/petanque/measure/result_image/compressed` (`sensor_msgs/CompressedImage`)
-- `/petanque/measure/result_vectors` (`std_msgs/String`, JSON payload expected)
-
-`ui_button` messages are also accepted for compatibility. If `topic` matches
-`/petanque_state_machine/change_state`, backend forwards `payload` to the same bridge.
-
-### Mapping and scaling
-
-The backend can remap and invert tablet axes before publishing `/teleop_cmd`.
-This is configured through the ROS params file:
-
-- `linear_axes` / `linear_signs`
-- `angular_axes` / `angular_signs`
-- `linear_scale`, `angular_scale`
-- `swap_xy`
-
-By default, tablet mapping is identity (`x->x`, `y->y`, `z->z`) and can be tuned per robot.
-Robot profiles are provided in:
-- `config/tablet_interface_parameters_explorer.yaml`
-- `config/tablet_interface_parameters_kinova.yaml`
-
-**Expected behavior**
-- While the script runs, `/teleop_cmd` should be non-zero.
-- `/teleop_cmd` follows the latest UI command and mode.
+- keep generic behavior in the core/websocket layer
+- put app-specific ROS behavior in bridge modules
+- preserve pétanque compatibility unless the team explicitly removes it
+- prefer generic messages over new custom websocket message types when possible
