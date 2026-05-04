@@ -76,6 +76,8 @@ class TabletInterfaceNode(Node):
         self.sandbox_ee_pose_topic = config.sandbox_ee_pose_topic
         self.sandbox_velocity_command_topic = config.sandbox_velocity_command_topic
         self.sandbox_joint_pose_topic = config.sandbox_joint_pose_topic
+        self.sandbox_toggle_output_topic = config.sandbox_toggle_output_topic
+        self.sandbox_toggle_output_mode = config.sandbox_toggle_output_mode
         self.param_call_timeout_sec = config.param_call_timeout_sec
         try:
             self.linear_axes, self.linear_signs = normalize_mapping(
@@ -110,6 +112,7 @@ class TabletInterfaceNode(Node):
             measure_demo_image_data_url=self._measure_demo_image_data_url,
         )
         self._generic_publishers = GenericPublisherCache(self)
+        self._ensure_sandbox_toggle_output_publisher()
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -274,10 +277,12 @@ class TabletInterfaceNode(Node):
             )
         )
         self.get_logger().info(
-            "Sandbox feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2}".format(
+            "Sandbox feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2} toggle_output_topic={3} toggle_output_mode={4}".format(
                 self.sandbox_ee_pose_topic or "disabled",
                 self.sandbox_velocity_command_topic or "disabled",
                 self.sandbox_joint_pose_topic or "disabled",
+                self.sandbox_toggle_output_topic or "disabled",
+                self.sandbox_toggle_output_mode or "disabled",
             )
         )
 
@@ -351,6 +356,18 @@ class TabletInterfaceNode(Node):
         )
         return True
 
+    def publish_ui_bool(self, topic: str, value: bool) -> bool:
+        ok = self._generic_publishers.publish_bool(topic, value)
+        if not ok:
+            return False
+        self.get_logger().info(
+            "Published generic UI bool: topic={0} value={1}".format(
+                topic.strip(),
+                str(bool(value)).lower(),
+            )
+        )
+        return True
+
     def publish_ui_scalar(self, topic: str, value: float) -> bool:
         ok = self._generic_publishers.publish_float(topic, value)
         if not ok:
@@ -362,6 +379,32 @@ class TabletInterfaceNode(Node):
             )
         )
         return True
+
+    def _ensure_sandbox_toggle_output_publisher(self) -> None:
+        normalized_topic = self.sandbox_toggle_output_topic.strip()
+        if not normalized_topic:
+            return
+
+        normalized_mode = self.sandbox_toggle_output_mode.strip().lower()
+        if normalized_mode == "numeric":
+            publisher = self._generic_publishers.ensure_float_publisher(normalized_topic)
+        elif normalized_mode == "boolean":
+            publisher = self._generic_publishers.ensure_bool_publisher(normalized_topic)
+        else:
+            self.get_logger().warning(
+                "Unsupported sandbox_toggle_output_mode={0}, skipping eager publisher".format(
+                    self.sandbox_toggle_output_mode
+                )
+            )
+            return
+
+        if publisher is not None:
+            self.get_logger().info(
+                "Eager sandbox toggle publisher ready: topic={0} mode={1}".format(
+                    normalized_topic,
+                    normalized_mode,
+                )
+            )
 
     def _on_gripper_command(self, msg: Float64MultiArray) -> None:
         self._actuator_bridge.on_gripper_command(msg)

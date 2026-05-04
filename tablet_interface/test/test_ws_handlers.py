@@ -34,6 +34,7 @@ class FakeNode:
         self.state_machine_topic = "/petanque_state_machine/change_state"
         self.hub_digital_output_topic = "/hub/digital_output"
         self.logger = FakeLogger()
+        self.bool_calls: list[tuple[str, bool]] = []
         self.scalar_calls: list[tuple[str, float]] = []
         self.camera_calls: list[tuple[str, str]] = []
         self.measure_snapshot: dict[str, object] = {
@@ -44,6 +45,10 @@ class FakeNode:
 
     def get_logger(self) -> FakeLogger:
         return self.logger
+
+    def publish_ui_bool(self, topic: str, value: bool) -> bool:
+        self.bool_calls.append((topic, value))
+        return True
 
     def publish_ui_scalar(self, topic: str, value: float) -> bool:
         self.scalar_calls.append((topic, value))
@@ -112,6 +117,34 @@ def test_handle_ws_payload_ui_scalar_emits_success_event() -> None:
             "severity": "info",
             "code": "UI_SCALAR_OK",
             "message": "ui_scalar topic=/cmd/max_velocity value=0.750",
+        }
+    ]
+
+
+def test_handle_ws_payload_ui_bool_emits_success_event() -> None:
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {
+                "type": "ui_bool",
+                "topic": "/sandbox/digital_output",
+                "value": True,
+                "widget_id": "sandbox-toggle-output",
+            },
+        )
+    )
+
+    assert node.bool_calls == [("/sandbox/digital_output", True)]
+    assert sender.messages == [
+        {
+            "type": "event",
+            "severity": "info",
+            "code": "UI_BOOL_OK",
+            "message": "ui_bool topic=/sandbox/digital_output value=true",
         }
     ]
 
