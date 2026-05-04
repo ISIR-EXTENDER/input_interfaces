@@ -75,6 +75,13 @@ class UiScalarMessage(BaseModel):
     widget_id: str | None = None
 
 
+class UiBoolMessage(BaseModel):
+    type: Literal["ui_bool"]
+    topic: str = Field(min_length=1)
+    value: bool
+    widget_id: str | None = None
+
+
 class CameraFrameMessage(BaseModel):
     type: Literal["camera_frame"]
     topic: str = Field(min_length=1)
@@ -144,6 +151,7 @@ __all__ = [
     "PetanqueConfigMessage",
     "UiButtonMessage",
     "UiScalarMessage",
+    "UiBoolMessage",
     "CameraFrameMessage",
     "MeasureRequestMessage",
     "MeasureRefreshMessage",

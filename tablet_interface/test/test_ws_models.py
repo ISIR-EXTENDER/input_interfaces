@@ -12,6 +12,7 @@ from tablet_interface.ws_models import (
     PetanqueConfigMessage,
     StateCmdMessage,
     StateMessage,
+    UiBoolMessage,
     UiButtonMessage,
     UiScalarMessage,
 )
@@ -267,6 +268,17 @@ def test_ui_scalar_valid() -> None:
     assert msg.value == pytest.approx(1.25)
 
 
+def test_ui_bool_valid() -> None:
+    payload = {
+        "type": "ui_bool",
+        "topic": "/sandbox/digital_output",
+        "value": True,
+        "widget_id": "sandbox-toggle-output",
+    }
+    msg = UiBoolMessage.model_validate(payload)
+    assert msg.value is True
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -285,6 +297,26 @@ def test_ui_scalar_valid() -> None:
 def test_ui_scalar_invalid(payload: dict) -> None:
     with pytest.raises(ValidationError):
         UiScalarMessage.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "type": "ui_bool",
+            "topic": "",
+            "value": True,
+        },
+        {
+            "type": "ui_bool",
+            "topic": "/sandbox/digital_output",
+            "value": "enabled",
+        },
+    ],
+)
+def test_ui_bool_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        UiBoolMessage.model_validate(payload)
 
 
 def test_measure_request_valid() -> None:

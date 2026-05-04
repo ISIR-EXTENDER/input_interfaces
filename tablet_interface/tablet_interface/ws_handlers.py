@@ -13,6 +13,7 @@ from tablet_interface.ws_models import (
     PetanqueConfigMessage,
     StateCmdMessage,
     StateMessage,
+    UiBoolMessage,
     UiButtonMessage,
     UiScalarMessage,
 )
@@ -256,6 +257,17 @@ async def handle_ws_payload(
             code="UI_SCALAR_OK" if ok else "UI_SCALAR_FAILED",
             severity="info" if ok else "warning",
             message=f"ui_scalar topic={scalar.topic} value={scalar.value:.3f}",
+        )
+        return
+
+    if msg_type == "ui_bool":
+        boolean = UiBoolMessage.model_validate(payload)
+        ok = node.publish_ui_bool(boolean.topic, boolean.value)
+        await send_event(
+            sender,
+            code="UI_BOOL_OK" if ok else "UI_BOOL_FAILED",
+            severity="info" if ok else "warning",
+            message=f"ui_bool topic={boolean.topic} value={str(boolean.value).lower()}",
         )
         return
 
