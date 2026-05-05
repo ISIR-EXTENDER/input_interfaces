@@ -32,5 +32,6 @@ tablet_interface_node:
     sandbox_velocity_command_topic: "/sandbox_controller/velocity_command"
     sandbox_joint_pose_topic: "/sandbox_controller/joint_pose"
     sandbox_toggle_output_topic: "/sandbox/digital_output"
+    sandbox_toggle_output_message_type: "std_msgs/msg/Float64"
     sandbox_toggle_output_mode: "numeric"
     param_call_timeout_sec: 1.5

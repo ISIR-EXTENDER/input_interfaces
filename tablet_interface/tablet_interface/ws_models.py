@@ -82,6 +82,14 @@ class UiBoolMessage(BaseModel):
     widget_id: str | None = None
 
 
+class UiTypedMessage(BaseModel):
+    type: Literal["ui_typed"]
+    topic: str = Field(min_length=1)
+    message_type: str = Field(min_length=1)
+    payload_text: str = Field(min_length=1)
+    widget_id: str | None = None
+
+
 class CameraFrameMessage(BaseModel):
     type: Literal["camera_frame"]
     topic: str = Field(min_length=1)
@@ -152,6 +160,7 @@ __all__ = [
     "UiButtonMessage",
     "UiScalarMessage",
     "UiBoolMessage",
+    "UiTypedMessage",
     "CameraFrameMessage",
     "MeasureRequestMessage",
     "MeasureRefreshMessage",

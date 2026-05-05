@@ -26,6 +26,7 @@ from tablet_interface.petanque_bridge import PetanqueBridge
 from tablet_interface.runtime_state import TabletRuntimeState
 from tablet_interface.sandbox_bridge import SandboxBridge
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
+from tablet_interface.typed_message_publishers import TypedMessagePublisherCache
 
 MEASURE_DEMO_VECTORS_JSON = json.dumps(
     {
@@ -77,6 +78,9 @@ class TabletInterfaceNode(Node):
         self.sandbox_velocity_command_topic = config.sandbox_velocity_command_topic
         self.sandbox_joint_pose_topic = config.sandbox_joint_pose_topic
         self.sandbox_toggle_output_topic = config.sandbox_toggle_output_topic
+        self.sandbox_toggle_output_message_type = (
+            config.sandbox_toggle_output_message_type
+        )
         self.sandbox_toggle_output_mode = config.sandbox_toggle_output_mode
         self.param_call_timeout_sec = config.param_call_timeout_sec
         try:
@@ -112,6 +116,7 @@ class TabletInterfaceNode(Node):
             measure_demo_image_data_url=self._measure_demo_image_data_url,
         )
         self._generic_publishers = GenericPublisherCache(self)
+        self._typed_publishers = TypedMessagePublisherCache(self)
         self._ensure_sandbox_toggle_output_publisher()
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
@@ -277,12 +282,12 @@ class TabletInterfaceNode(Node):
             )
         )
         self.get_logger().info(
-            "Sandbox feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2} toggle_output_topic={3} toggle_output_mode={4}".format(
+            "Sandbox feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2} toggle_output_topic={3} toggle_output_message_type={4}".format(
                 self.sandbox_ee_pose_topic or "disabled",
                 self.sandbox_velocity_command_topic or "disabled",
                 self.sandbox_joint_pose_topic or "disabled",
                 self.sandbox_toggle_output_topic or "disabled",
-                self.sandbox_toggle_output_mode or "disabled",
+                self._resolve_sandbox_toggle_output_message_type() or "disabled",
             )
         )
 
@@ -368,6 +373,29 @@ class TabletInterfaceNode(Node):
         )
         return True
 
+    def publish_ui_typed(
+        self,
+        topic: str,
+        message_type: str,
+        payload_text: str,
+    ) -> bool:
+        try:
+            ok = self._typed_publishers.publish(topic, message_type, payload_text)
+        except ValueError as exc:
+            self.get_logger().warning(f"Failed to publish typed UI message: {exc}")
+            return False
+
+        if not ok:
+            return False
+
+        self.get_logger().info(
+            "Published typed UI message: topic={0} message_type={1}".format(
+                topic.strip(),
+                message_type.strip(),
+            )
+        )
+        return True
+
     def publish_ui_scalar(self, topic: str, value: float) -> bool:
         ok = self._generic_publishers.publish_float(topic, value)
         if not ok:
@@ -380,29 +408,45 @@ class TabletInterfaceNode(Node):
         )
         return True
 
+    def _resolve_sandbox_toggle_output_message_type(self) -> str:
+        normalized_message_type = self.sandbox_toggle_output_message_type.strip()
+        if normalized_message_type:
+            return normalized_message_type
+
+        legacy_mode = self.sandbox_toggle_output_mode.strip().lower()
+        if legacy_mode == "boolean":
+            return "std_msgs/msg/Bool"
+        if legacy_mode in {"", "numeric"}:
+            return "std_msgs/msg/Float64"
+        self.get_logger().warning(
+            "Unsupported sandbox_toggle_output_mode={0}, falling back to Float64".format(
+                self.sandbox_toggle_output_mode
+            )
+        )
+        return "std_msgs/msg/Float64"
+
     def _ensure_sandbox_toggle_output_publisher(self) -> None:
         normalized_topic = self.sandbox_toggle_output_topic.strip()
         if not normalized_topic:
             return
 
-        normalized_mode = self.sandbox_toggle_output_mode.strip().lower()
-        if normalized_mode == "numeric":
-            publisher = self._generic_publishers.ensure_float_publisher(normalized_topic)
-        elif normalized_mode == "boolean":
-            publisher = self._generic_publishers.ensure_bool_publisher(normalized_topic)
-        else:
+        resolved_message_type = self._resolve_sandbox_toggle_output_message_type()
+        try:
+            publisher = self._typed_publishers.ensure_publisher(
+                normalized_topic,
+                resolved_message_type,
+            )
+        except ValueError as exc:
             self.get_logger().warning(
-                "Unsupported sandbox_toggle_output_mode={0}, skipping eager publisher".format(
-                    self.sandbox_toggle_output_mode
-                )
+                f"Failed to prepare eager sandbox toggle publisher: {exc}"
             )
             return
 
         if publisher is not None:
             self.get_logger().info(
-                "Eager sandbox toggle publisher ready: topic={0} mode={1}".format(
+                "Eager sandbox toggle publisher ready: topic={0} message_type={1}".format(
                     normalized_topic,
-                    normalized_mode,
+                    resolved_message_type,
                 )
             )
 
