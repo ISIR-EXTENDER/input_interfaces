@@ -16,6 +16,7 @@ from tablet_interface.ws_models import (
     UiBoolMessage,
     UiButtonMessage,
     UiScalarMessage,
+    UiTypedMessage,
 )
 
 if TYPE_CHECKING:
@@ -268,6 +269,24 @@ async def handle_ws_payload(
             code="UI_BOOL_OK" if ok else "UI_BOOL_FAILED",
             severity="info" if ok else "warning",
             message=f"ui_bool topic={boolean.topic} value={str(boolean.value).lower()}",
+        )
+        return
+
+    if msg_type == "ui_typed":
+        typed_message = UiTypedMessage.model_validate(payload)
+        ok = node.publish_ui_typed(
+            typed_message.topic,
+            typed_message.message_type,
+            typed_message.payload_text,
+        )
+        await send_event(
+            sender,
+            code="UI_TYPED_OK" if ok else "UI_TYPED_FAILED",
+            severity="info" if ok else "warning",
+            message=(
+                f"ui_typed topic={typed_message.topic} "
+                f"message_type={typed_message.message_type}"
+            ),
         )
         return
 

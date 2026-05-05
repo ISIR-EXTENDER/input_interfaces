@@ -39,6 +39,7 @@ class TabletInterfaceConfig:
     sandbox_velocity_command_topic: str
     sandbox_joint_pose_topic: str
     sandbox_toggle_output_topic: str
+    sandbox_toggle_output_message_type: str
     sandbox_toggle_output_mode: str
     param_call_timeout_sec: float
 
@@ -76,6 +77,7 @@ PARAMETER_DEFAULTS = {
     "sandbox_velocity_command_topic": "/sandbox_controller/velocity_command",
     "sandbox_joint_pose_topic": "/sandbox_controller/joint_pose",
     "sandbox_toggle_output_topic": "/sandbox/digital_output",
+    "sandbox_toggle_output_message_type": "std_msgs/msg/Float64",
     "sandbox_toggle_output_mode": "numeric",
     "param_call_timeout_sec": 1.5,
 }
@@ -137,6 +139,9 @@ def load_tablet_interface_config(node: Node) -> TabletInterfaceConfig:
         ),
         sandbox_toggle_output_topic=str(
             node.get_parameter("sandbox_toggle_output_topic").value
+        ),
+        sandbox_toggle_output_message_type=str(
+            node.get_parameter("sandbox_toggle_output_message_type").value
         ),
         sandbox_toggle_output_mode=str(
             node.get_parameter("sandbox_toggle_output_mode").value

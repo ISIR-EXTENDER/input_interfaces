@@ -36,6 +36,7 @@ class FakeNode:
         self.logger = FakeLogger()
         self.bool_calls: list[tuple[str, bool]] = []
         self.scalar_calls: list[tuple[str, float]] = []
+        self.typed_calls: list[tuple[str, str, str]] = []
         self.camera_calls: list[tuple[str, str]] = []
         self.measure_snapshot: dict[str, object] = {
             "image_data_url": "data:image/png;base64,AA==",
@@ -52,6 +53,15 @@ class FakeNode:
 
     def publish_ui_scalar(self, topic: str, value: float) -> bool:
         self.scalar_calls.append((topic, value))
+        return True
+
+    def publish_ui_typed(
+        self,
+        topic: str,
+        message_type: str,
+        payload_text: str,
+    ) -> bool:
+        self.typed_calls.append((topic, message_type, payload_text))
         return True
 
     def publish_camera_frame(self, *, topic: str, image_data_url: str) -> bool:
@@ -145,6 +155,41 @@ def test_handle_ws_payload_ui_bool_emits_success_event() -> None:
             "severity": "info",
             "code": "UI_BOOL_OK",
             "message": "ui_bool topic=/sandbox/digital_output value=true",
+        }
+    ]
+
+
+def test_handle_ws_payload_ui_typed_emits_success_event() -> None:
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {
+                "type": "ui_typed",
+                "topic": "/petanque_state_machine/change_state",
+                "message_type": "std_msgs/msg/String",
+                "payload_text": "{data: 'activate_throw'}",
+                "widget_id": "toggle-typed",
+            },
+        )
+    )
+
+    assert node.typed_calls == [
+        (
+            "/petanque_state_machine/change_state",
+            "std_msgs/msg/String",
+            "{data: 'activate_throw'}",
+        )
+    ]
+    assert sender.messages == [
+        {
+            "type": "event",
+            "severity": "info",
+            "code": "UI_TYPED_OK",
+            "message": "ui_typed topic=/petanque_state_machine/change_state message_type=std_msgs/msg/String",
         }
     ]
 

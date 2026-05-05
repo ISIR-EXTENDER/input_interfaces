@@ -15,6 +15,7 @@ from tablet_interface.ws_models import (
     UiBoolMessage,
     UiButtonMessage,
     UiScalarMessage,
+    UiTypedMessage,
 )
 
 
@@ -279,6 +280,18 @@ def test_ui_bool_valid() -> None:
     assert msg.value is True
 
 
+def test_ui_typed_valid() -> None:
+    payload = {
+        "type": "ui_typed",
+        "topic": "/petanque_state_machine/change_state",
+        "message_type": "std_msgs/msg/String",
+        "payload_text": "{data: 'activate_throw'}",
+        "widget_id": "toggle-typed",
+    }
+    msg = UiTypedMessage.model_validate(payload)
+    assert msg.message_type == "std_msgs/msg/String"
+
+
 @pytest.mark.parametrize(
     "payload",
     [
@@ -317,6 +330,34 @@ def test_ui_scalar_invalid(payload: dict) -> None:
 def test_ui_bool_invalid(payload: dict) -> None:
     with pytest.raises(ValidationError):
         UiBoolMessage.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {
+            "type": "ui_typed",
+            "topic": "",
+            "message_type": "std_msgs/msg/String",
+            "payload_text": "{data: 'activate_throw'}",
+        },
+        {
+            "type": "ui_typed",
+            "topic": "/petanque_state_machine/change_state",
+            "message_type": "",
+            "payload_text": "{data: 'activate_throw'}",
+        },
+        {
+            "type": "ui_typed",
+            "topic": "/petanque_state_machine/change_state",
+            "message_type": "std_msgs/msg/String",
+            "payload_text": "",
+        },
+    ],
+)
+def test_ui_typed_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        UiTypedMessage.model_validate(payload)
 
 
 def test_measure_request_valid() -> None:
