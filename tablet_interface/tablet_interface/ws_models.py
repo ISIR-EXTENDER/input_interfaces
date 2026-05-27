@@ -16,7 +16,7 @@ class Vector3Model(BaseModel):
 class CmdMessage(BaseModel):
     type: Literal["teleop_cmd"]
     seq: conint(strict=True, ge=0)
-    mode: conint(strict=True, ge=0, le=3)
+    mode: conint(strict=True, ge=0, le=4)
     linear: Vector3Model
     angular: Vector3Model
 
