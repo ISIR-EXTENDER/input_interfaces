@@ -1,0 +1,20 @@
+%YAML:1.0
+---
+- tag_id: 4
+  label: "pose"
+  frame: "tag_4"
+  saved_transform: "tag_T_ee"
+  position: [-0.0197564, -0.207684, -0.545959]
+  orientation_wxyz: [-0.303348, 0.346196, 0.672238, 0.579849]
+- tag_id: 6
+  label: "pose"
+  frame: "tag_6"
+  saved_transform: "tag_T_ee"
+  position: [-0.0030408, 0.00886595, 0.222335]
+  orientation_wxyz: [0.999033, 0.00596111, -0.0258791, -0.0350293]
+- tag_id: 2
+  label: ""
+  frame: "tag_2"
+  saved_transform: "tag_T_ee"
+  position: [0.00245192, 0.00877864, 0.171123]
+  orientation_wxyz: [0.997895, -0.0640003, 0.00436201, 0.00952683]
