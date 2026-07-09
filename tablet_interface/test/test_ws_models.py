@@ -12,6 +12,8 @@ from tablet_interface.ws_models import (
     PetanqueConfigMessage,
     StateCmdMessage,
     StateMessage,
+    TopicSnapshotMessage,
+    TopicSubscribeMessage,
     UiBoolMessage,
     UiButtonMessage,
     UiScalarMessage,
@@ -258,6 +260,39 @@ def test_camera_frame_invalid(payload: dict) -> None:
         CameraFrameMessage.model_validate(payload)
 
 
+def test_topic_subscribe_valid() -> None:
+    payload = {
+        "type": "topic_subscribe",
+        "topics": [
+            {
+                "topic": "/tag_detections",
+                "message_type": "extender_msgs/msg/SharedControlGoalArray",
+            }
+        ],
+    }
+    msg = TopicSubscribeMessage.model_validate(payload)
+    assert msg.topics[0].topic == "/tag_detections"
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"type": "topic_subscribe", "topics": []},
+        {
+            "type": "topic_subscribe",
+            "topics": [{"topic": "", "message_type": "std_msgs/msg/String"}],
+        },
+        {
+            "type": "topic_subscribe",
+            "topics": [{"topic": "/debug", "message_type": ""}],
+        },
+    ],
+)
+def test_topic_subscribe_invalid(payload: dict) -> None:
+    with pytest.raises(ValidationError):
+        TopicSubscribeMessage.model_validate(payload)
+
+
 def test_ui_scalar_valid() -> None:
     payload = {
         "type": "ui_scalar",
@@ -397,6 +432,21 @@ def test_measure_result_valid() -> None:
     msg = MeasureResultMessage.model_validate(payload)
     assert msg.updated_at_ms == 12345
     assert msg.vectors_json == "{\"distances\":[0.6]}"
+
+
+def test_topic_snapshot_valid() -> None:
+    payload = {
+        "type": "topic_snapshot",
+        "topic": "/visual_servoing/velocity_command",
+        "message_type": "geometry_msgs/msg/TwistStamped",
+        "updated_at_ms": 12345,
+        "revision": 3,
+        "data": {"twist": {"linear": {"x": 0.1}}},
+        "error": None,
+    }
+    msg = TopicSnapshotMessage.model_validate(payload)
+    assert msg.revision == 3
+    assert msg.data == {"twist": {"linear": {"x": 0.1}}}
 
 
 def test_state_message_valid() -> None:

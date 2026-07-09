@@ -13,6 +13,8 @@ from tablet_interface.ws_models import (
     PetanqueConfigMessage,
     StateCmdMessage,
     StateMessage,
+    TopicSnapshotMessage,
+    TopicSubscribeMessage,
     UiBoolMessage,
     UiButtonMessage,
     UiScalarMessage,
@@ -73,6 +75,28 @@ async def send_measure_result(
         updated_at_ms=updated_at_ms,
     )
     await sender.send_json(result.model_dump())
+
+
+async def send_topic_snapshot(
+    sender: JsonSender,
+    *,
+    topic: str,
+    message_type: str,
+    updated_at_ms: int | None,
+    revision: int,
+    data: Any | None,
+    error: str | None,
+) -> None:
+    snapshot = TopicSnapshotMessage(
+        type="topic_snapshot",
+        topic=topic,
+        message_type=message_type,
+        updated_at_ms=updated_at_ms,
+        revision=revision,
+        data=data,
+        error=error,
+    )
+    await sender.send_json(snapshot.model_dump())
 
 
 def _handle_ui_button_topic(
@@ -301,6 +325,29 @@ async def handle_ws_payload(
             code="CAMERA_FRAME_OK" if ok else "CAMERA_FRAME_FAILED",
             severity="info" if ok else "warning",
             message=f"camera_frame topic={frame.topic}",
+        )
+        return
+
+    if msg_type == "topic_subscribe":
+        request = TopicSubscribeMessage.model_validate(payload)
+        results = [
+            (
+                spec.topic,
+                spec.message_type,
+                *node.ensure_topic_monitor(spec.topic, spec.message_type),
+            )
+            for spec in request.topics
+        ]
+        failed = [item for item in results if not item[2]]
+        message = "; ".join(
+            f"{topic} ({message_type}): {detail}"
+            for topic, message_type, _, detail in results
+        )
+        await send_event(
+            sender,
+            code="TOPIC_SUBSCRIBE_OK" if not failed else "TOPIC_SUBSCRIBE_PARTIAL",
+            severity="info" if not failed else "warning",
+            message=message,
         )
         return
 

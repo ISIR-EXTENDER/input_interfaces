@@ -41,6 +41,8 @@ class TabletInterfaceConfig:
     sandbox_toggle_output_topic: str
     sandbox_toggle_output_message_type: str
     sandbox_toggle_output_mode: str
+    topic_snapshot_hz: float
+    topic_monitor_specs: list[str]
     param_call_timeout_sec: float
 
 
@@ -79,6 +81,12 @@ PARAMETER_DEFAULTS = {
     "sandbox_toggle_output_topic": "/sandbox/digital_output",
     "sandbox_toggle_output_message_type": "std_msgs/msg/Float64",
     "sandbox_toggle_output_mode": "numeric",
+    "topic_snapshot_hz": 10.0,
+    "topic_monitor_specs": [
+        "/tag_detections|extender_msgs/msg/SharedControlGoalArray",
+        "/visual_servoing/velocity_command|geometry_msgs/msg/TwistStamped",
+        "/visual_servoing/error_TAGtoTAGd|geometry_msgs/msg/TwistStamped",
+    ],
     "param_call_timeout_sec": 1.5,
 }
 
@@ -146,6 +154,11 @@ def load_tablet_interface_config(node: Node) -> TabletInterfaceConfig:
         sandbox_toggle_output_mode=str(
             node.get_parameter("sandbox_toggle_output_mode").value
         ),
+        topic_snapshot_hz=float(node.get_parameter("topic_snapshot_hz").value),
+        topic_monitor_specs=[
+            str(value)
+            for value in node.get_parameter("topic_monitor_specs").value
+        ],
         param_call_timeout_sec=float(
             node.get_parameter("param_call_timeout_sec").value
         ),

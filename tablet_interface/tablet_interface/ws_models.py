@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, ValidationError, confloat, conint, model_validator
 
@@ -103,6 +103,16 @@ class CameraFrameMessage(BaseModel):
         return self
 
 
+class TopicMonitorSpec(BaseModel):
+    topic: str = Field(min_length=1)
+    message_type: str = Field(min_length=1)
+
+
+class TopicSubscribeMessage(BaseModel):
+    type: Literal["topic_subscribe"]
+    topics: list[TopicMonitorSpec] = Field(min_length=1)
+
+
 class MeasureRequestMessage(BaseModel):
     type: Literal["measure_request"]
     image_data_url: str = Field(min_length=32)
@@ -123,6 +133,16 @@ class MeasureResultMessage(BaseModel):
     image_data_url: str | None = None
     vectors_json: str | None = None
     updated_at_ms: conint(strict=True, ge=0) | None = None
+
+
+class TopicSnapshotMessage(BaseModel):
+    type: Literal["topic_snapshot"]
+    topic: str = Field(min_length=1)
+    message_type: str = Field(min_length=1)
+    updated_at_ms: conint(strict=True, ge=0) | None = None
+    revision: conint(strict=True, ge=0)
+    data: Any | None = None
+    error: str | None = None
 
 
 class PositionMessage(BaseModel):
@@ -162,9 +182,12 @@ __all__ = [
     "UiBoolMessage",
     "UiTypedMessage",
     "CameraFrameMessage",
+    "TopicMonitorSpec",
+    "TopicSubscribeMessage",
     "MeasureRequestMessage",
     "MeasureRefreshMessage",
     "MeasureResultMessage",
+    "TopicSnapshotMessage",
     "PositionMessage",
     "StateMessage",
     "EventMessage",

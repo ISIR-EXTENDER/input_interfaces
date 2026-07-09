@@ -26,6 +26,7 @@ from tablet_interface.petanque_bridge import PetanqueBridge
 from tablet_interface.runtime_state import TabletRuntimeState
 from tablet_interface.sandbox_bridge import SandboxBridge
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
+from tablet_interface.topic_monitor_bridge import TopicMonitorBridge
 from tablet_interface.typed_message_publishers import TypedMessagePublisherCache
 
 MEASURE_DEMO_VECTORS_JSON = json.dumps(
@@ -82,6 +83,8 @@ class TabletInterfaceNode(Node):
             config.sandbox_toggle_output_message_type
         )
         self.sandbox_toggle_output_mode = config.sandbox_toggle_output_mode
+        self.topic_snapshot_hz = config.topic_snapshot_hz
+        self.topic_monitor_specs = config.topic_monitor_specs
         self.param_call_timeout_sec = config.param_call_timeout_sec
         try:
             self.linear_axes, self.linear_signs = normalize_mapping(
@@ -216,6 +219,11 @@ class TabletInterfaceNode(Node):
             logger=self.get_logger(),
             publishers=self._generic_publishers,
         )
+        self._topic_monitor_bridge = TopicMonitorBridge(
+            node=self,
+            now_ms=self._now_ms,
+        )
+        self._ensure_configured_topic_monitors()
         self._timer = self.create_timer(1.0 / self.publish_rate_hz, self._on_timer)
 
         self.get_logger().info("Tablet interface node initialized")
@@ -288,6 +296,12 @@ class TabletInterfaceNode(Node):
                 self.sandbox_joint_pose_topic or "disabled",
                 self.sandbox_toggle_output_topic or "disabled",
                 self._resolve_sandbox_toggle_output_message_type() or "disabled",
+            )
+        )
+        self.get_logger().info(
+            "Topic monitor: snapshot_hz={0:.1f} configured_topics={1}".format(
+                self.topic_snapshot_hz,
+                len(self.topic_monitor_specs),
             )
         )
 
@@ -492,6 +506,12 @@ class TabletInterfaceNode(Node):
             image_data_url=image_data_url,
         )
 
+    def ensure_topic_monitor(self, topic: str, message_type: str) -> tuple[bool, str]:
+        return self._topic_monitor_bridge.ensure_subscription(topic, message_type)
+
+    def get_topic_monitor_snapshots(self) -> list[dict[str, object]]:
+        return self._topic_monitor_bridge.get_snapshots()
+
     def set_connected(self, connected: bool) -> None:
         self._runtime_state.set_connected(connected)
 
@@ -508,6 +528,17 @@ class TabletInterfaceNode(Node):
         msg.twist = twist
         msg.mode = int(mode)
         self._publisher.publish(msg)
+
+    def _ensure_configured_topic_monitors(self) -> None:
+        for raw_spec in self.topic_monitor_specs:
+            ok, detail = self._topic_monitor_bridge.ensure_spec(raw_spec)
+            if not ok:
+                self.get_logger().warning(
+                    "Failed to configure topic monitor '{0}': {1}".format(
+                        raw_spec,
+                        detail,
+                    )
+                )
 
     @staticmethod
     def _copy_twist(twist: Twist) -> Twist:

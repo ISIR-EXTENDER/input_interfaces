@@ -20,6 +20,7 @@ from tablet_interface.ws_handlers import (
     handle_ws_payload,
     send_event,
     send_measure_result,
+    send_topic_snapshot,
 )
 
 
@@ -77,6 +78,37 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
                 ),
             )
 
+    async def _topic_snapshot_sender(websocket: WebSocket) -> None:
+        interval = 1.0 / max(node.topic_snapshot_hz, 1e-3)
+        last_revisions: dict[tuple[str, str], int] = {}
+        while True:
+            await asyncio.sleep(interval)
+            for snapshot in node.get_topic_monitor_snapshots():
+                topic = str(snapshot["topic"])
+                message_type = str(snapshot["message_type"])
+                revision = int(snapshot["revision"])
+                key = (topic, message_type)
+                if revision <= last_revisions.get(key, -1):
+                    continue
+                last_revisions[key] = revision
+                await send_topic_snapshot(
+                    websocket,
+                    topic=topic,
+                    message_type=message_type,
+                    updated_at_ms=(
+                        int(snapshot["updated_at_ms"])
+                        if isinstance(snapshot.get("updated_at_ms"), int)
+                        else None
+                    ),
+                    revision=revision,
+                    data=snapshot.get("data"),
+                    error=(
+                        str(snapshot["error"])
+                        if snapshot.get("error") is not None
+                        else None
+                    ),
+                )
+
     @app.websocket(ws_path)
     async def ws_endpoint(websocket: WebSocket) -> None:
         await websocket.accept()
@@ -86,6 +118,7 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
 
         state_task = asyncio.create_task(_state_sender(websocket))
         measure_task = asyncio.create_task(_measure_sender(websocket))
+        topic_snapshot_task = asyncio.create_task(_topic_snapshot_sender(websocket))
         try:
             while True:
                 payload = await websocket.receive_json()
@@ -104,6 +137,7 @@ def run_uvicorn_server(node: TabletInterfaceNode) -> None:
         finally:
             state_task.cancel()
             measure_task.cancel()
+            topic_snapshot_task.cancel()
             node.set_connected(False)
             node.get_logger().info("WS client disconnected")
             if WebSocketState is not None and websocket.client_state == WebSocketState.CONNECTED:
