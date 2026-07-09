@@ -55,7 +55,8 @@ Sandbox feedback forwarded to UI state:
 The backend can now forward arbitrary ROS topic snapshots to the UI. This is intended for
 small debug and observability messages such as visual-servoing status, tag detections,
 commands, errors, and scalar/vector state. Keep image and video streams on the dedicated
-camera path.
+camera path. `sensor_msgs/msg/Image` and `sensor_msgs/msg/CompressedImage` are rejected by
+the topic monitor so large video payloads do not accidentally go through websocket snapshots.
 
 Configured topics are declared with:
 

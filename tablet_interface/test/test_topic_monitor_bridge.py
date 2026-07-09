@@ -109,6 +109,21 @@ def test_topic_monitor_bridge_rejects_unknown_message_type() -> None:
     assert node.subscriptions == []
 
 
+@pytest.mark.parametrize(
+    "message_type",
+    ["sensor_msgs/msg/Image", "sensor_msgs/msg/CompressedImage"],
+)
+def test_topic_monitor_bridge_rejects_image_message_types(message_type: str) -> None:
+    node = FakeNode()
+    bridge = TopicMonitorBridge(node=node, now_ms=lambda: 0)
+
+    ok, detail = bridge.ensure_subscription("/camera/image_raw", message_type)
+
+    assert ok is False
+    assert "image/video topics are not supported by topic_monitor" in detail
+    assert node.subscriptions == []
+
+
 def test_to_jsonable_converts_binary_and_nested_sequences() -> None:
     assert to_jsonable({"payload": b"\x01\x02", "items": ({"x": 1},)}) == {
         "payload": [1, 2],

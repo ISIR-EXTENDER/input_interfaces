@@ -10,6 +10,10 @@ from rosidl_runtime_py.utilities import get_message
 
 
 TopicMonitorKey = tuple[str, str]
+BLOCKED_TOPIC_MONITOR_MESSAGE_TYPES = {
+    "sensor_msgs/msg/Image",
+    "sensor_msgs/msg/CompressedImage",
+}
 
 
 def parse_topic_monitor_spec(raw_spec: str) -> tuple[str, str]:
@@ -38,6 +42,10 @@ def to_jsonable(value: Any) -> Any:
     return value
 
 
+def is_blocked_topic_monitor_message_type(message_type: str) -> bool:
+    return message_type.strip() in BLOCKED_TOPIC_MONITOR_MESSAGE_TYPES
+
+
 class TopicMonitorBridge:
     def __init__(self, *, node: Node, now_ms: Callable[[], int]) -> None:
         self._node = node
@@ -54,6 +62,14 @@ class TopicMonitorBridge:
             return False, "topic is empty"
         if not normalized_message_type:
             return False, "message_type is empty"
+        if is_blocked_topic_monitor_message_type(normalized_message_type):
+            return (
+                False,
+                (
+                    "image/video topics are not supported by topic_monitor; "
+                    "use the camera stream or camera_frame path instead"
+                ),
+            )
 
         key = (normalized_topic, normalized_message_type)
         with self._lock:
@@ -152,7 +168,9 @@ class TopicMonitorBridge:
 
 
 __all__ = [
+    "BLOCKED_TOPIC_MONITOR_MESSAGE_TYPES",
     "TopicMonitorBridge",
+    "is_blocked_topic_monitor_message_type",
     "parse_topic_monitor_spec",
     "to_jsonable",
 ]
