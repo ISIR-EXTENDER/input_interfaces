@@ -67,10 +67,9 @@ Current Sandbox V0.0 screens on the frontend:
 | `visual_servoing` | Typed ON/OFF and save-tag commands. |
 | `visual_servoing_monitor` | Topic snapshots for AprilTag and servo telemetry. |
 
-Use `sandbox_controller` from
-[`controllers`](https://github.com/ISIR-EXTENDER/controllers) for new robot
-control experiments. Petanque bridges remain available, but they should not be
-the default path for new features.
+Use [`sandbox_controller`](https://github.com/ISIR-EXTENDER/sandbox_controller)
+for new robot control experiments. Petanque bridges remain available, but they
+should not be the default path for new features.
 
 ## Architecture
 
@@ -325,7 +324,7 @@ ROS workspace:
 | Package / repo | Required for |
 | --- | --- |
 | [`robot_interfaces/extender_msgs`](https://github.com/ISIR-EXTENDER/robot_interfaces) | `TeleopCommand` and shared Extender messages. |
-| [`controllers/sandbox_controller`](https://github.com/ISIR-EXTENDER/controllers) | Sandbox teleop and feedback loop. |
+| [`sandbox_controller`](https://github.com/ISIR-EXTENDER/sandbox_controller) | Sandbox teleop and feedback loop. |
 | [`tools/apriltag_detector`](https://github.com/ISIR-EXTENDER/tools/tree/main/apriltag_detector) | AprilTag detections for visual servoing. |
 | [`visual_servoing`](https://github.com/ISIR-EXTENDER/visual_servoing) | Visual-servoing controller and telemetry topics. |
 | [`extender_ui`](https://github.com/ISIR-EXTENDER/extender_ui) | Frontend runtime and screen builder. |
@@ -413,9 +412,10 @@ the active Extender workspace split.
 
 | Component | Repository | Commit checked | Notes |
 | --- | --- | --- | --- |
-| Frontend | [`extender_ui`](https://github.com/ISIR-EXTENDER/extender_ui) | PR #29 `docs/update-project-readme` | README branch documenting Sandbox V0.0 and backend contracts. |
-| Backend/input interfaces | [`input_interfaces`](https://github.com/ISIR-EXTENDER/input_interfaces) | Current README branch | This README update. |
-| Controllers | [`controllers`](https://github.com/ISIR-EXTENDER/controllers) | `c6bbebc feat: add snake mode to cartesian_velocity controller (#7)` | Includes snake mode support. |
+| Frontend | [`extender_ui`](https://github.com/ISIR-EXTENDER/extender_ui) | `9c3d0db docs: update project readme (#29)` | Documents Sandbox V0.0 and backend contracts. |
+| Backend/input interfaces | [`input_interfaces`](https://github.com/ISIR-EXTENDER/input_interfaces) | Current branch | This README update. |
+| Controllers | [`controllers`](https://github.com/ISIR-EXTENDER/controllers) | `c6bbebc feat: add snake mode to cartesian_velocity controller (#7)` | Shared robot controllers. |
+| Sandbox controller | [`sandbox_controller`](https://github.com/ISIR-EXTENDER/sandbox_controller) | `0411619 fix: use synced joint positions for feedback (#4)` | Reference controller for new backend/UI smoke tests. |
 | Robot messages | [`robot_interfaces`](https://github.com/ISIR-EXTENDER/robot_interfaces) | `1543180 Merge pull request #5 from ssrpo/fix/remove-stale-joint-pose-helper` | Provides shared ROS messages. |
 | Tools | [`tools`](https://github.com/ISIR-EXTENDER/tools) | `800bed7 Merge pull request #4 from MegMll/topic/add_snake` | Provides `apriltag_detector`. |
 | Visual servoing | [`visual_servoing`](https://github.com/ISIR-EXTENDER/visual_servoing) | `bc6a33a first commit` | Robin's current visual-servoing package. |
