@@ -27,6 +27,7 @@ Main modules:
 - `ui_button` -> publishes `std_msgs/String`
 - `ui_scalar` -> publishes `std_msgs/Float64`
 - `camera_frame` -> publishes `sensor_msgs/CompressedImage`
+- `topic_subscribe` -> creates generic ROS subscriptions and streams `topic_snapshot`
 
 Compatibility messages still supported for existing pétanque screens:
 
@@ -48,6 +49,52 @@ Sandbox feedback forwarded to UI state:
 - `ee_pose`
 - `tcp_speed_mps`
 - `joint_positions`
+
+## ROS Topic Monitor
+
+The backend can now forward arbitrary ROS topic snapshots to the UI. This is intended for
+small debug and observability messages such as visual-servoing status, tag detections,
+commands, errors, and scalar/vector state. Keep image and video streams on the dedicated
+camera path. `sensor_msgs/msg/Image` and `sensor_msgs/msg/CompressedImage` are rejected by
+the topic monitor so large video payloads do not accidentally go through websocket snapshots.
+
+Configured topics are declared with:
+
+```yaml
+topic_snapshot_hz: 10.0
+topic_monitor_specs:
+  - "/tag_detections|extender_msgs/msg/SharedControlGoalArray"
+  - "/visual_servoing/velocity_command|geometry_msgs/msg/TwistStamped"
+  - "/visual_servoing/error_TAGtoTAGd|geometry_msgs/msg/TwistStamped"
+```
+
+The UI can also request topics at runtime:
+
+```json
+{
+  "type": "topic_subscribe",
+  "topics": [
+    {
+      "topic": "/tag_detections",
+      "message_type": "extender_msgs/msg/SharedControlGoalArray"
+    }
+  ]
+}
+```
+
+When a monitored ROS message arrives, the websocket emits:
+
+```json
+{
+  "type": "topic_snapshot",
+  "topic": "/tag_detections",
+  "message_type": "extender_msgs/msg/SharedControlGoalArray",
+  "updated_at_ms": 123456,
+  "revision": 1,
+  "data": {},
+  "error": null
+}
+```
 
 ## Camera direction
 

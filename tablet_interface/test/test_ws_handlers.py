@@ -38,6 +38,7 @@ class FakeNode:
         self.scalar_calls: list[tuple[str, float]] = []
         self.typed_calls: list[tuple[str, str, str]] = []
         self.camera_calls: list[tuple[str, str]] = []
+        self.topic_monitor_calls: list[tuple[str, str]] = []
         self.measure_snapshot: dict[str, object] = {
             "image_data_url": "data:image/png;base64,AA==",
             "vectors_json": '{"source":"opencv"}',
@@ -67,6 +68,10 @@ class FakeNode:
     def publish_camera_frame(self, *, topic: str, image_data_url: str) -> bool:
         self.camera_calls.append((topic, image_data_url))
         return True
+
+    def ensure_topic_monitor(self, topic: str, message_type: str) -> tuple[bool, str]:
+        self.topic_monitor_calls.append((topic, message_type))
+        return True, "subscribed"
 
     def get_measure_result_snapshot(self) -> dict[str, object]:
         return dict(self.measure_snapshot)
@@ -245,5 +250,43 @@ def test_handle_ws_payload_camera_frame_emits_success_event() -> None:
             "severity": "info",
             "code": "CAMERA_FRAME_OK",
             "message": "camera_frame topic=/tablet/camera/front/compressed",
+        }
+    ]
+
+
+def test_handle_ws_payload_topic_subscribe_emits_success_event() -> None:
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {
+                "type": "topic_subscribe",
+                "topics": [
+                    {
+                        "topic": "/tag_detections",
+                        "message_type": "extender_msgs/msg/SharedControlGoalArray",
+                    },
+                    {
+                        "topic": "/visual_servoing/velocity_command",
+                        "message_type": "geometry_msgs/msg/TwistStamped",
+                    },
+                ],
+            },
+        )
+    )
+
+    assert node.topic_monitor_calls == [
+        ("/tag_detections", "extender_msgs/msg/SharedControlGoalArray"),
+        ("/visual_servoing/velocity_command", "geometry_msgs/msg/TwistStamped"),
+    ]
+    assert sender.messages == [
+        {
+            "type": "event",
+            "severity": "info",
+            "code": "TOPIC_SUBSCRIBE_OK",
+            "message": "/tag_detections (extender_msgs/msg/SharedControlGoalArray): subscribed; /visual_servoing/velocity_command (geometry_msgs/msg/TwistStamped): subscribed",
         }
     ]

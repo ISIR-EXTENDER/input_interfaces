@@ -39,4 +39,9 @@ tablet_interface_node:
     sandbox_toggle_output_topic: "/sandbox/digital_output"
     sandbox_toggle_output_message_type: "std_msgs/msg/Float64"
     sandbox_toggle_output_mode: "numeric"
+    topic_snapshot_hz: 10.0
+    topic_monitor_specs:
+      - "/tag_detections|extender_msgs/msg/SharedControlGoalArray"
+      - "/visual_servoing/velocity_command|geometry_msgs/msg/TwistStamped"
+      - "/visual_servoing/error_TAGtoTAGd|geometry_msgs/msg/TwistStamped"
     param_call_timeout_sec: 1.5
