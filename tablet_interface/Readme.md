@@ -96,6 +96,21 @@ When a monitored ROS message arrives, the websocket emits:
 }
 ```
 
+## Visual Servoing UI Contract
+
+Robin's current `visual_servoing` node uses the generic websocket/ROS bridge directly:
+
+| UI / ROS path | ROS message | Direction | Notes |
+| --- | --- | --- | --- |
+| `/ui/visual_servoing/on` | `std_msgs/msg/Bool` | UI -> ROS | `true` enables visual servoing, `false` disables it. |
+| `/ui/visual_servoing/save` | `std_msgs/msg/String` | UI -> ROS | Triggered by the Save Tag button; current payload is `save`. |
+| `/tag_detections` | `extender_msgs/msg/SharedControlGoalArray` | ROS -> UI / visual servoing | AprilTag detections; Robin's node follows the first entry in `goal_array`. |
+| `/visual_servoing/velocity_command` | `geometry_msgs/msg/TwistStamped` | ROS -> UI | Command produced by the visual-servoing node. |
+| `/visual_servoing/error_TAGtoTAGd` | `geometry_msgs/msg/TwistStamped` | ROS -> UI | Debug/alignment error published by the visual-servoing node. |
+
+The UI should display video through stream widgets and should monitor only the small ROS
+messages above through `topic_subscribe`.
+
 ## Camera direction
 
 The backend now accepts `camera_frame`, republishes it as ROS `CompressedImage`, and makes browser-captured frames available to ROS nodes. This is the preferred path for future camera, RGB-D, perception, and visual-servoing features.
