@@ -422,7 +422,7 @@ void VisualServoing::timer_callback(){
         CAM_theta_u = CAMtoTAG.orientation * TAG_theta_u;
         Eigen::Vector3d omega_of_tagEtag_in_cam;
         omega_of_tagEtag_in_cam = lambda * CAM_theta_u;
-        std::cout << "CAM_theta_u = ["<< CAM_theta_u[0] << " , " << CAM_theta_u[1] << " , " << CAM_theta_u[2] << " ]" << std::endl;
+        //std::cout << "CAM_theta_u = ["<< CAM_theta_u[0] << " , " << CAM_theta_u[1] << " , " << CAM_theta_u[2] << " ]" << std::endl;
         //std::cout << "omega_of_tagEtag_in_cam = ["<< omega_of_tagEtag_in_cam[0] << " , " << omega_of_tagEtag_in_cam[1] << " , " << omega_of_tagEtag_in_cam[2] << " ]" << std::endl;
 
         // 2 - Computation velocity of tagEee_in_b ************************************************************************************************************************
@@ -436,8 +436,8 @@ void VisualServoing::timer_callback(){
         Eigen::Vector3d velocity_of_ee_in_b;
         Eigen::Vector3d omega_of_ee_in_b;
         velocity_of_ee_in_b = (BtoEE.orientation*EEtoCAM.orientation)*velocity_of_ee_in_cam;
-        //omega_of_ee_in_b = (BtoEE.orientation*EEtoCAM.orientation)*omega_of_tagEtag_in_cam;
-        omega_of_ee_in_b = omega_of_tagEtag_in_cam;
+        omega_of_ee_in_b = (BtoEE.orientation*EEtoCAM.orientation)*(-omega_of_tagEtag_in_cam);
+        //omega_of_ee_in_b = omega_of_tagEtag_in_cam;
         
         // Saturation
         
