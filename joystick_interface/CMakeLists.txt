@@ -49,6 +49,26 @@ target_include_directories(joystick_input_node PUBLIC
   $<INSTALL_INTERFACE:include>
 )
 
+add_executable(joystick_snake_node
+  src/snake_main.cpp
+  src/snake_demo.cpp
+)
+
+# Package dependencies
+ament_target_dependencies(joystick_snake_node
+  rclcpp
+  sensor_msgs
+  std_msgs
+  geometry_msgs
+  extender_msgs
+)
+
+target_include_directories(joystick_snake_node PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+
+
 if(ENABLE_FRANKA)
   # Add the executable for the franka gripper
   add_executable(franka_gripper_node
@@ -77,8 +97,11 @@ install(DIRECTORY include/
 # Install the executable
 install(TARGETS
   joystick_input_node
+  joystick_snake_node
   DESTINATION lib/${PROJECT_NAME}
 )
+
+
 
 if(ENABLE_FRANKA)
   install(TARGETS
