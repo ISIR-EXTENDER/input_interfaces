@@ -34,6 +34,8 @@ tablet_interface_node:
     sandbox_toggle_output_topic: "/sandbox/digital_output"
     sandbox_toggle_output_message_type: "std_msgs/msg/Float64"
     sandbox_toggle_output_mode: "numeric"
+    eager_typed_publishers:
+      - "/activate_snake|std_msgs/msg/Bool"
     topic_snapshot_hz: 10.0
     topic_monitor_specs:
       - "/tag_detections|extender_msgs/msg/SharedControlGoalArray"

@@ -83,6 +83,7 @@ class TabletInterfaceNode(Node):
             config.sandbox_toggle_output_message_type
         )
         self.sandbox_toggle_output_mode = config.sandbox_toggle_output_mode
+        self.eager_typed_publishers = config.eager_typed_publishers
         self.topic_snapshot_hz = config.topic_snapshot_hz
         self.topic_monitor_specs = config.topic_monitor_specs
         self.param_call_timeout_sec = config.param_call_timeout_sec
@@ -121,6 +122,7 @@ class TabletInterfaceNode(Node):
         self._generic_publishers = GenericPublisherCache(self)
         self._typed_publishers = TypedMessagePublisherCache(self)
         self._ensure_sandbox_toggle_output_publisher()
+        self._ensure_eager_typed_publishers()
 
         self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
         self._state_cmd_publisher = self.create_publisher(
@@ -463,6 +465,42 @@ class TabletInterfaceNode(Node):
                     resolved_message_type,
                 )
             )
+
+    def _ensure_eager_typed_publishers(self) -> None:
+        for spec in self.eager_typed_publishers:
+            normalized_spec = spec.strip()
+            if not normalized_spec:
+                continue
+
+            topic, separator, message_type = normalized_spec.partition("|")
+            topic = topic.strip()
+            message_type = message_type.strip()
+            if not separator or not topic or not message_type:
+                self.get_logger().warning(
+                    "Invalid eager typed publisher spec={0}; expected topic|message_type".format(
+                        normalized_spec
+                    )
+                )
+                continue
+
+            try:
+                publisher = self._typed_publishers.ensure_publisher(
+                    topic,
+                    message_type,
+                )
+            except ValueError as exc:
+                self.get_logger().warning(
+                    f"Failed to prepare eager typed publisher: {exc}"
+                )
+                continue
+
+            if publisher is not None:
+                self.get_logger().info(
+                    "Eager typed publisher ready: topic={0} message_type={1}".format(
+                        topic,
+                        message_type,
+                    )
+                )
 
     def _on_gripper_command(self, msg: Float64MultiArray) -> None:
         self._actuator_bridge.on_gripper_command(msg)

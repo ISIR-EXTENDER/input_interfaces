@@ -158,7 +158,7 @@ class StateMessage(BaseModel):
     watchdog_timeout_ms: conint(strict=True, ge=0)
     last_seq: conint(strict=True, ge=0)
     publishing_rate_hz: confloat(strict=True, ge=0)
-    current_mode: conint(strict=True, ge=0, le=3)
+    current_mode: conint(strict=True, ge=0, le=4)
     gripper_state: Literal["open", "close", "unknown"] | None = None
     ee_pose: PositionMessage | None = None
     tcp_speed_mps: confloat(ge=0.0, allow_inf_nan=False) | None = None
