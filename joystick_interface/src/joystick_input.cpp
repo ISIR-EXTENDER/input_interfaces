@@ -110,7 +110,6 @@ namespace input_interfaces
                 mapping_.spacenav_rotation_axes[2], mapping_.spacenav_rotation_signs[0],
                 mapping_.spacenav_rotation_signs[1], mapping_.spacenav_rotation_signs[2],
                 mapping_.mode_button_spacenav);
-
     // Create a subscription to the SpaceMouse Joy messages on "/spacenav/joy".
     spacenav_joy_subscriber_ = this->create_subscription<sensor_msgs::msg::Joy>(
         "/spacenav/joy", 10, std::bind(&JoystickInput::joyCallback, this, std::placeholders::_1));
@@ -170,8 +169,8 @@ namespace input_interfaces
       {
         current_mode_ = (current_mode_ == Mode::TRANSLATION_ROTATION) ? Mode::ROTATION
                                                                       : Mode::TRANSLATION_ROTATION;
-        mode_str_ = (current_mode_ == Mode::TRANSLATION_ROTATION) ? "TRANSLATION_ROTATION"
-                                                                    : "ROTATION";
+        mode_str_ =
+            (current_mode_ == Mode::TRANSLATION_ROTATION) ? "TRANSLATION_ROTATION" : "ROTATION";
       }
       RCLCPP_INFO(this->get_logger(), "[joy] Mode switched to %s", mode_str_.c_str());
     }

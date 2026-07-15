@@ -24,14 +24,13 @@ namespace input_interfaces
     std::vector<double> spacenav_rotation_signs{1.0, -1.0, -1.0};
 
     // Buttons
-    int mode_button_joy{11};       
-    int mode_button_spacenav{1}; 
-
+    int mode_button_joy{11};
+    int mode_button_spacenav{1};
   };
 
   /// @brief Node that will subscribe either to a SpaceMouse or a normal joystick, and send out
   /// teloep_cmd messages (twist + mode of command) on the topic /teleop_cmd
-  class JoystickInput : public rclcpp::Node
+  class JoystickInput : public rclcpp::Node 
   {
   public:
     /// @brief Constructor of the class. Will intialize parameters as well a subscriber and
@@ -79,4 +78,4 @@ namespace input_interfaces
     int cur_button_1_{0};  ///< Stores the current state of button 1.
     bool button_1_already_handled_ = false; ///< Flag to ensure button 1 press is handled only once.
   };
-} // namespace control_interfaces
+} // namespace input_interfaces
