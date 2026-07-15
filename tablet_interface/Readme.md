@@ -63,7 +63,7 @@ Current Sandbox V0.0 screens on the frontend:
 | `sandbox_control` | `teleop_cmd`, sandbox feedback state, typed widget publishing. |
 | `sandbox_teleop_config` | Teleop mapping and reusable widget configuration. |
 | `control_panel` | Teleop, webcam/camera frame flow, gripper, visual-servoing controls, and compact telemetry. |
-| `snake_control` | `teleop_cmd` plus typed boolean publication to `/snake_control/enable`. |
+| `snake_control` | `teleop_cmd` plus typed boolean publication to `/activate_snake`. |
 | `visual_servoing` | Typed ON/OFF and save-tag commands. |
 | `visual_servoing_monitor` | Topic snapshots for AprilTag and servo telemetry. |
 
@@ -161,7 +161,7 @@ rules, and republishes the command as ROS.
 ```json
 {
   "type": "ui_typed",
-  "topic": "/snake_control/enable",
+  "topic": "/activate_snake",
   "message_type": "std_msgs/msg/Bool",
   "payload_text": "{data: true}",
   "widget_id": "snake-enable"
@@ -229,13 +229,13 @@ Use the `teleop_cmd_topic` parameter to change the ROS output topic.
 
 | ROS topic | Message | Direction |
 | --- | --- | --- |
-| `/snake_control/enable` | `std_msgs/msg/Bool` | UI -> backend -> controller |
+| `/activate_snake` | `std_msgs/msg/Bool` | UI -> backend -> controller |
 
 Momentary button contract:
 
 ```text
-press   -> /snake_control/enable std_msgs/msg/Bool {data: true}
-release -> /snake_control/enable std_msgs/msg/Bool {data: false}
+press   -> /activate_snake std_msgs/msg/Bool {data: true}
+release -> /activate_snake std_msgs/msg/Bool {data: false}
 ```
 
 The same joystick velocity is sent in B1 and B2. The frontend changes only the

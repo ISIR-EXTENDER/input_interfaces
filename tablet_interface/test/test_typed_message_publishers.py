@@ -95,6 +95,19 @@ def test_typed_message_publisher_cache_reuses_publishers_per_topic_and_type() ->
     assert len(node.created_publishers) == 1
 
 
+def test_typed_message_publisher_cache_can_prepare_snake_publisher() -> None:
+    node = FakeNode()
+    cache = TypedMessagePublisherCache(node)
+
+    cache.ensure_publisher("/activate_snake", "std_msgs/msg/Bool")
+
+    assert len(node.created_publishers) == 1
+    message_cls, topic, qos = node.created_publishers[0]
+    assert topic == "/activate_snake"
+    assert qos == 10
+    assert message_cls.__name__ == "Bool"
+
+
 def test_typed_message_publisher_cache_rejects_invalid_payload() -> None:
     node = FakeNode()
     cache = TypedMessagePublisherCache(node)

@@ -486,6 +486,20 @@ def test_state_message_valid_without_recent_command() -> None:
     assert msg.cmd_age_ms is None
 
 
+def test_state_message_accepts_snake_mode() -> None:
+    payload = {
+        "type": "state",
+        "connected": True,
+        "cmd_age_ms": 20,
+        "watchdog_timeout_ms": 200,
+        "last_seq": 10,
+        "publishing_rate_hz": 30.0,
+        "current_mode": 4,
+    }
+    msg = StateMessage.model_validate(payload)
+    assert msg.current_mode == 4
+
+
 @pytest.mark.parametrize(
     "payload",
     [

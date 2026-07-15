@@ -41,6 +41,7 @@ class TabletInterfaceConfig:
     sandbox_toggle_output_topic: str
     sandbox_toggle_output_message_type: str
     sandbox_toggle_output_mode: str
+    eager_typed_publishers: list[str]
     topic_snapshot_hz: float
     topic_monitor_specs: list[str]
     param_call_timeout_sec: float
@@ -81,6 +82,9 @@ PARAMETER_DEFAULTS = {
     "sandbox_toggle_output_topic": "/sandbox/digital_output",
     "sandbox_toggle_output_message_type": "std_msgs/msg/Float64",
     "sandbox_toggle_output_mode": "numeric",
+    "eager_typed_publishers": [
+        "/activate_snake|std_msgs/msg/Bool",
+    ],
     "topic_snapshot_hz": 10.0,
     "topic_monitor_specs": [
         "/tag_detections|extender_msgs/msg/SharedControlGoalArray",
@@ -154,6 +158,10 @@ def load_tablet_interface_config(node: Node) -> TabletInterfaceConfig:
         sandbox_toggle_output_mode=str(
             node.get_parameter("sandbox_toggle_output_mode").value
         ),
+        eager_typed_publishers=[
+            str(value)
+            for value in node.get_parameter("eager_typed_publishers").value
+        ],
         topic_snapshot_hz=float(node.get_parameter("topic_snapshot_hz").value),
         topic_monitor_specs=[
             str(value)
