@@ -1,0 +1,55 @@
+joystick_mapper:
+  ros__parameters:
+    joy_topic: "/joy"
+    output_topic: "/joystick_cartesian_command"
+    mode_request_topic: "/mode_request"
+    output_frame_id: "base_link"
+    deadzone: 0.2
+    axes:
+      linear_x:
+        index: 0
+        scale: 1.0
+      linear_y:
+        index: 1
+        scale: 1.0
+      linear_z:
+        index: 2
+        scale: 1.0
+      angular_x:
+        index: -1
+        scale: 1.0
+      angular_y:
+        index: -1
+        scale: 1.0
+      angular_z:
+        index: -1
+        scale: 1.0
+    local_mode_button_index: 1
+    local_mode_button_mode: toggle
+    modes:
+      b2:
+        axes:
+          linear_x:
+            index: -1
+            scale: 1.0
+          linear_y:
+            index: -1
+            scale: 1.0
+          linear_z:
+            index: -1
+            scale: 1.0
+          angular_x:
+            index: 0
+            scale: 1.0
+          angular_y:
+            index: 1
+            scale: 1.0
+          angular_z:
+            index: 2
+            scale: 1.0
+    jaco_button_index: 11
+    jaco_button_mode: toggle
+    snake_button_index: 10
+    snake_button_mode: hold
+    home_button_index: 4
+    home_button_mode: hold
