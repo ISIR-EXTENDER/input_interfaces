@@ -6,6 +6,7 @@
 
 #include "extender_msgs/msg/teleop_command.hpp"
 #include "std_msgs/msg/bool.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
 
 namespace input_interfaces
 {
@@ -47,9 +48,14 @@ namespace input_interfaces
     /// @brief Publisher for the custom `TeleopCmd` message on the `/teleop_cmd` topic.
     rclcpp::Publisher<extender_msgs::msg::TeleopCommand>::SharedPtr teleop_cmd_publisher_;
     rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr snake_publisher_;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr gripper_publisher_;
 
     // Button state handling variables to detect single presses
     int last_button_1_{0}; ///< Stores the previous state of button 1 (mode toggle).
     int cur_button_1_{0};  ///< Stores the current state of button 1.
+
+    int last_gripper_cmd{0};
+    int cur_gripper_cmd{0};
+    double current_opening = 1.0;
   };
 } // namespace input_interfaces

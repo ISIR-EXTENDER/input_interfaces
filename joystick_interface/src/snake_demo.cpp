@@ -14,6 +14,8 @@ namespace input_interfaces
         this->create_publisher<extender_msgs::msg::TeleopCommand>("/teleop_cmd", 10);
 
     snake_publisher_ = this->create_publisher<std_msgs::msg::Bool>("/activate_snake", 10);
+    gripper_publisher_ = this->create_publisher<std_msgs::msg::Float64MultiArray>(
+        "/gripper_controller/commands", 10);
 
     RCLCPP_INFO(this->get_logger(), "Joystick Controller node initialized");
   }
@@ -67,5 +69,18 @@ namespace input_interfaces
     cmd_msg.twist = twist;
     cmd_msg.mode = static_cast<uint8_t>(current_mode_);
     teleop_cmd_publisher_->publish(cmd_msg);
+
+    // Check gripper
+    // Check gripper
+    cur_gripper_cmd = msg->buttons[0];
+
+    if (cur_gripper_cmd == 1 && last_gripper_cmd == 0)
+    {
+      std_msgs::msg::Float64MultiArray msg_gripper;
+      current_opening = (current_opening == 1.0) ? 0.1 : 1.0;
+      msg_gripper.data.push_back(current_opening);
+      gripper_publisher_->publish(msg_gripper);
+    }
+    last_gripper_cmd = cur_gripper_cmd;
   }
 } // namespace input_interfaces
