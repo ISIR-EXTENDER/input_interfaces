@@ -1,23 +1,24 @@
-import os
-
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
+from launch.substitutions import PathJoinSubstitution
+from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
 
-from launch.substitutions import (
-    PathJoinSubstitution
-)
-from launch_ros.substitutions import FindPackageShare
-
 def generate_launch_description():
-    # YAML param
-    #controllers_yaml_path = PathJoinSubstitution(
-    #    [
-    #        FindPackageShare("visual_servoing"),            # package name
-    #        "config",                                       # file localization
-    #        "visual_servoing_param.yaml",                   # Yaml file name
-    #    ]
-    #)
+    visual_servoing_config = PathJoinSubstitution([
+        FindPackageShare("visual_servoing"),
+        "config",
+        "visual_servoing.yaml",
+    ])
+    saved_tag_goals_config = PathJoinSubstitution([
+        FindPackageShare("visual_servoing"),
+        "config",
+        "saved_tag_goals.yaml",
+    ])
+    handeye_tf_config = PathJoinSubstitution([
+        FindPackageShare("visual_servoing"),
+        "config",
+        "handeye_tf_kinovaCam.yaml",
+    ])
 
     visual_servoing = Node(
         package="visual_servoing",
@@ -25,11 +26,14 @@ def generate_launch_description():
         name="visual_servoing",
         output="screen",
         parameters=[
-            '/home/robingibaud/ros2_ws/src/extender_workspace/src/visual_servoing/config/visual_servoing.yaml',                                             #R.G param robot
+            visual_servoing_config,
+            {
+                "yaml_path": saved_tag_goals_config,
+                "yaml_path_transform_EEtoCAM": handeye_tf_config,
+            },
         ],
     )
 
     return LaunchDescription([
-        visual_servoing
-        #shared_control_visualization_node,
+        visual_servoing,
     ])
