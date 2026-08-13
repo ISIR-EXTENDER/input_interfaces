@@ -51,6 +51,30 @@ It now provides:
 
 See [`tablet_interface/Readme.md`](tablet_interface/Readme.md).
 
+### `visual_servoing`
+
+AprilTag-based visual servoing input for camera-guided Cartesian motion.
+
+`visual_servoing` subscribes to:
+
+- `extender_msgs/msg/SharedControlGoalArray` tag detections on
+  `/tag_detections`,
+- `std_msgs/msg/Bool` enable/disable commands on `/ui/visual_servoing/on`,
+- `std_msgs/msg/String` save requests on `/ui/visual_servoing/save`.
+
+It publishes:
+
+- `geometry_msgs/msg/TwistStamped` Cartesian velocity commands on
+  `/visual_servoing/velocity_command`,
+- `geometry_msgs/msg/TwistStamped` debug/error telemetry on
+  `/visual_servoing/error_TAGtoTAGd`.
+
+The launch file resolves its parameter and calibration files from the installed
+`visual_servoing` package share. When routing visual servoing through
+`cartesian_manager`, make sure `cartesian_manager.topics.visual_servoing_command`
+matches `/visual_servoing/velocity_command`, or remap/rename the publisher to
+the manager's configured input topic.
+
 ## Contribution rule
 
 New input backends should follow the same pattern:
