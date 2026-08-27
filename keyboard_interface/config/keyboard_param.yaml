@@ -1,0 +1,8 @@
+keyboard_interface_node:
+  ros__parameters:
+    publish_qos_depth: 10
+    publish_period_sec: 0.01
+    key_topic_mappings:
+      - "space=/resetReference"
+      - "enter=/keyboard/enter"
+      - "a=/keyboard/a"
