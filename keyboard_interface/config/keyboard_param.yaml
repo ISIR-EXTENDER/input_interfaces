@@ -3,6 +3,6 @@ keyboard_interface_node:
     publish_qos_depth: 10
     publish_period_sec: 0.01
     key_topic_mappings:
-      - "space=/resetReference"
+      - "space=/reset_reference"
       - "enter=/keyboard/enter"
       - "a=/keyboard/a"

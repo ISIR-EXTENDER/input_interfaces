@@ -2,39 +2,42 @@ from __future__ import annotations
 
 from queue import SimpleQueue
 from threading import Lock
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Optional
 
+from keyboard_interface.mappings import parse_key_topic_mappings
 from pynput import keyboard
-import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Bool
 
 
 class KeyboardInterfaceNode(Node):
     def __init__(self) -> None:
-        super().__init__("keyboard_interface_node")
+        super().__init__('keyboard_interface_node')
 
-        self.declare_parameter("key_topic_mappings", ["space=/keyboard/space"])
-        self.declare_parameter("publish_qos_depth", 10)
-        self.declare_parameter("publish_period_sec", 0.01)
+        self.declare_parameter('key_topic_mappings', ['space=/keyboard/space'])
+        self.declare_parameter('publish_qos_depth', 10)
+        self.declare_parameter('publish_period_sec', 0.01)
 
-        raw_mappings = list(self.get_parameter("key_topic_mappings").value)
-        publish_qos_depth = int(self.get_parameter("publish_qos_depth").value)
-        publish_period_sec = float(self.get_parameter("publish_period_sec").value)
+        raw_mappings = list(self.get_parameter('key_topic_mappings').value)
+        publish_qos_depth = int(self.get_parameter('publish_qos_depth').value)
+        publish_period_sec = float(self.get_parameter('publish_period_sec').value)
 
-        self._configured_topics = self._parse_key_topic_mappings(raw_mappings)
+        self._configured_topics = parse_key_topic_mappings(raw_mappings)
         self._bool_publishers = {
             key_name: self.create_publisher(Bool, topic_name, publish_qos_depth)
             for key_name, topic_name in self._configured_topics.items()
         }
-        self._pending_presses: SimpleQueue[str] = SimpleQueue()
-        self._active_keys: Set[str] = set()
+        self._pending_key_states: SimpleQueue[tuple[str, bool]] = SimpleQueue()
+        self._active_keys: set[str] = set()
         self._active_keys_lock = Lock()
         self._listener: Optional[keyboard.Listener] = None
-        self._publish_timer = self.create_timer(publish_period_sec, self._flush_pending_presses)
+        self._publish_timer = self.create_timer(
+            publish_period_sec,
+            self._flush_pending_key_states,
+        )
 
         self.get_logger().info(
-            f"Configured {len(self._configured_topics)} keyboard mappings."
+            f'Configured {len(self._configured_topics)} keyboard mappings.'
         )
 
     def start_listener(self) -> None:
@@ -64,7 +67,7 @@ class KeyboardInterfaceNode(Node):
                 return
             self._active_keys.add(key_name)
 
-        self._pending_presses.put(key_name)
+        self._pending_key_states.put((key_name, True))
 
     def _handle_key_release(self, key: keyboard.Key | keyboard.KeyCode) -> None:
         key_name = self._normalize_key(key)
@@ -72,54 +75,20 @@ class KeyboardInterfaceNode(Node):
             return
 
         with self._active_keys_lock:
+            was_active = key_name in self._active_keys
             self._active_keys.discard(key_name)
 
-    def _flush_pending_presses(self) -> None:
-        while not self._pending_presses.empty():
-            key_name = self._pending_presses.get()
+        if was_active:
+            self._pending_key_states.put((key_name, False))
+
+    def _flush_pending_key_states(self) -> None:
+        while not self._pending_key_states.empty():
+            key_name, is_pressed = self._pending_key_states.get()
             publisher = self._bool_publishers.get(key_name)
             if publisher is None:
                 continue
 
-            publisher.publish(Bool(data=True))
-
-    def _parse_key_topic_mappings(self, raw_mappings: List[str]) -> Dict[str, str]:
-        mappings: Dict[str, str] = {}
-
-        for raw_mapping in raw_mappings:
-            key_name, topic_name = self._split_mapping(raw_mapping)
-            normalized_key = self._normalize_config_key(key_name)
-
-            if normalized_key in mappings:
-                raise ValueError(f"Duplicate key mapping for '{normalized_key}'.")
-
-            mappings[normalized_key] = topic_name
-
-        if not mappings:
-            raise ValueError("At least one key/topic mapping must be configured.")
-
-        return mappings
-
-    def _split_mapping(self, raw_mapping: str) -> Tuple[str, str]:
-        if "=" not in raw_mapping:
-            raise ValueError(
-                "Invalid key_topic_mappings entry "
-                f"'{raw_mapping}'. Expected format 'key=/topic_name'."
-            )
-
-        key_name, topic_name = raw_mapping.split("=", 1)
-        key_name = key_name.strip()
-        topic_name = topic_name.strip()
-
-        if not key_name:
-            raise ValueError(f"Invalid mapping '{raw_mapping}': key cannot be empty.")
-        if not topic_name:
-            raise ValueError(f"Invalid mapping '{raw_mapping}': topic cannot be empty.")
-
-        return key_name, topic_name
-
-    def _normalize_config_key(self, key_name: str) -> str:
-        return key_name.strip().lower()
+            publisher.publish(Bool(data=is_pressed))
 
     def _normalize_key(self, key: keyboard.Key | keyboard.KeyCode) -> Optional[str]:
         if isinstance(key, keyboard.KeyCode):
