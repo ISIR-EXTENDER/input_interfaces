@@ -36,6 +36,7 @@ class TabletRuntimeState:
         self._tcp_speed_mps: float | None = None
         self._joint_positions: List[float] | None = None
         self._publish_rate_hz = float(publish_rate_hz)
+        self._last_mode_request: Optional[str] = None
 
     def update_command_meta(
         self,
@@ -111,6 +112,22 @@ class TabletRuntimeState:
         with self._lock:
             self._joint_positions = [float(value) for value in positions]
 
+    def set_last_mode_request(self, mode_request: Optional[str]) -> None:
+        """Record the last sticky mode request sent to ``cartesian_manager``.
+
+        One-shot requests such as ``behaviour/joint_target/home`` pass ``None``:
+        the manager returns to passthrough immediately, so keeping them would
+        show the operator a mode the robot is no longer in.
+        """
+        with self._lock:
+            self._last_mode_request = (
+                str(mode_request) if mode_request is not None else None
+            )
+
+    def get_last_mode_request(self) -> Optional[str]:
+        with self._lock:
+            return self._last_mode_request
+
     def get_state(self, *, now_ms: int) -> Dict[str, object]:
         with self._lock:
             cmd_age_ms = None
@@ -124,6 +141,7 @@ class TabletRuntimeState:
                 "last_seq": self._last_seq,
                 "publishing_rate_hz": self._publish_rate_hz,
                 "current_mode": int(self._current_mode),
+                "mode_request": self._last_mode_request,
                 "gripper_state": self._gripper_state,
                 "ee_pose": dict(self._ee_pose) if self._ee_pose is not None else None,
                 "tcp_speed_mps": self._tcp_speed_mps,

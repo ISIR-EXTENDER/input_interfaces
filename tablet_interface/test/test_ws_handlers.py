@@ -33,6 +33,8 @@ class FakeNode:
     def __init__(self) -> None:
         self.state_machine_topic = "/petanque_state_machine/change_state"
         self.hub_digital_output_topic = "/hub/digital_output"
+        self.mode_request_topic = "/mode_request"
+        self.mode_requests: list[str] = []
         self.logger = FakeLogger()
         self.bool_calls: list[tuple[str, bool]] = []
         self.scalar_calls: list[tuple[str, float]] = []
@@ -76,6 +78,15 @@ class FakeNode:
     def get_measure_result_snapshot(self) -> dict[str, object]:
         return dict(self.measure_snapshot)
 
+    def request_mode(self, raw_mode: str) -> tuple[bool, str]:
+        from tablet_interface.mode_request import validate_mode_request
+
+        ok, normalized, detail = validate_mode_request(raw_mode)
+        if ok:
+            self.mode_requests.append(normalized)
+            return True, normalized
+        return False, detail
+
 
 def test_build_state_message_preserves_sandbox_feedback_fields() -> None:
     message = build_state_message(
@@ -86,6 +97,7 @@ def test_build_state_message_preserves_sandbox_feedback_fields() -> None:
             "last_seq": 7,
             "publishing_rate_hz": 30.0,
             "current_mode": 2,
+            "mode_request": "geometric/snake",
             "gripper_state": "open",
             "ee_pose": {"x": 0.1, "y": -0.2, "z": 0.3},
             "tcp_speed_mps": 0.42,
@@ -101,6 +113,7 @@ def test_build_state_message_preserves_sandbox_feedback_fields() -> None:
         "last_seq": 7,
         "publishing_rate_hz": 30.0,
         "current_mode": 2,
+        "mode_request": "geometric/snake",
         "gripper_state": "open",
         "ee_pose": {"x": 0.1, "y": -0.2, "z": 0.3},
         "tcp_speed_mps": 0.42,
@@ -290,3 +303,86 @@ def test_handle_ws_payload_topic_subscribe_emits_success_event() -> None:
             "message": "/tag_detections (extender_msgs/msg/SharedControlGoalArray): subscribed; /visual_servoing/velocity_command (geometry_msgs/msg/TwistStamped): subscribed",
         }
     ]
+
+
+def test_handle_ws_payload_mode_request_forwards_to_manager() -> None:
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {"type": "mode_request", "mode": "GEOMETRIC/Snake"},
+        )
+    )
+
+    assert node.mode_requests == ["geometric/snake"]
+    assert sender.messages[-1]["code"] == "MODE_REQUEST_OK"
+
+
+def test_handle_ws_payload_mode_request_reports_invalid_mode() -> None:
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {"type": "mode_request", "mode": "geometric/spiral"},
+        )
+    )
+
+    assert node.mode_requests == []
+    event = sender.messages[-1]
+    assert event["code"] == "MODE_REQUEST_REJECTED"
+    assert event["severity"] == "warning"
+
+
+def test_handle_ws_payload_ui_typed_on_mode_topic_is_validated() -> None:
+    # A momentary widget configured with the mode-request topic must not fall
+    # through to the generic typed publisher, or an invalid mode would reach
+    # cartesian_manager and be dropped without operator feedback.
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {
+                "type": "ui_typed",
+                "topic": "/mode_request",
+                "message_type": "std_msgs/msg/String",
+                "payload_text": "{data: geometric/snake}",
+                "widget_id": "snake-hold",
+            },
+        )
+    )
+
+    assert node.mode_requests == ["geometric/snake"]
+    assert node.typed_calls == []
+    assert sender.messages[-1]["code"] == "MODE_REQUEST_OK"
+
+
+def test_handle_ws_payload_ui_typed_on_mode_topic_rejects_bad_payload() -> None:
+    node = FakeNode()
+    sender = FakeSender()
+
+    asyncio.run(
+        handle_ws_payload(
+            node,
+            sender,
+            {
+                "type": "ui_typed",
+                "topic": "/mode_request",
+                "message_type": "std_msgs/msg/String",
+                "payload_text": "{data: geometric/spiral}",
+                "widget_id": "snake-hold",
+            },
+        )
+    )
+
+    assert node.mode_requests == []
+    assert node.typed_calls == []
+    assert sender.messages[-1]["code"] == "MODE_REQUEST_REJECTED"
