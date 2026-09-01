@@ -424,7 +424,7 @@ From the Extender ROS workspace:
 ```bash
 uv sync
 colcon build --symlink-install --packages-select tablet_interface
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ```
 
@@ -439,7 +439,7 @@ make run-node
 Equivalent explicit command:
 
 ```bash
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source ../../../install/setup.bash
 uv run python -m tablet_interface.main --ros-args \
   --params-file config/tablet_interface_parameters_explorer.yaml
