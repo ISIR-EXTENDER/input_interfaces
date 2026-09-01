@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Protocol
 
+from tablet_interface.mode_request import extract_mode_from_payload_text
 from tablet_interface.ws_models import (
     CameraFrameMessage,
     CmdMessage,
@@ -10,6 +11,7 @@ from tablet_interface.ws_models import (
     MeasureRefreshMessage,
     MeasureRequestMessage,
     MeasureResultMessage,
+    ModeRequestMessage,
     PetanqueConfigMessage,
     StateCmdMessage,
     StateMessage,
@@ -53,6 +55,11 @@ def build_state_message(state: dict[str, object]) -> dict[str, object]:
         last_seq=int(state["last_seq"]),
         publishing_rate_hz=float(state["publishing_rate_hz"]),
         current_mode=int(state["current_mode"]),
+        mode_request=(
+            str(state["mode_request"])
+            if isinstance(state.get("mode_request"), str)
+            else None
+        ),
         gripper_state=state.get("gripper_state"),
         ee_pose=state.get("ee_pose"),
         tcp_speed_mps=state.get("tcp_speed_mps"),
@@ -296,8 +303,35 @@ async def handle_ws_payload(
         )
         return
 
+    if msg_type == "mode_request":
+        request = ModeRequestMessage.model_validate(payload)
+        ok, detail = node.request_mode(request.mode)
+        await send_event(
+            sender,
+            code="MODE_REQUEST_OK" if ok else "MODE_REQUEST_REJECTED",
+            severity="info" if ok else "warning",
+            message=f"mode_request={request.mode}: {detail}",
+        )
+        return
+
     if msg_type == "ui_typed":
         typed_message = UiTypedMessage.model_validate(payload)
+
+        # A widget configured with the mode-request topic goes through the same
+        # validation as a native mode_request, so an invalid mode is reported to
+        # the operator instead of being dropped silently by cartesian_manager.
+        if typed_message.topic.strip() == node.mode_request_topic.strip():
+            ok, detail = node.request_mode(
+                extract_mode_from_payload_text(typed_message.payload_text)
+            )
+            await send_event(
+                sender,
+                code="MODE_REQUEST_OK" if ok else "MODE_REQUEST_REJECTED",
+                severity="info" if ok else "warning",
+                message=f"mode_request={typed_message.payload_text}: {detail}",
+            )
+            return
+
         ok = node.publish_ui_typed(
             typed_message.topic,
             typed_message.message_type,

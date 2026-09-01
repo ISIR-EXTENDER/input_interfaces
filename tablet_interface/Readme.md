@@ -6,8 +6,11 @@ generic UI messages from the tablet, validates them, republishes them to ROS 2,
 and streams robot state, topic snapshots, and backend events back to the UI.
 
 The current production-style frontend app for new work is **Sandbox V0.0**.
-Petanque support is still preserved for legacy compatibility and examples, but
-new controller/UI development should use Sandbox V0.0 with `sandbox_controller`.
+It now drives the robot through
+[`cartesian_manager`](https://github.com/ISIR-EXTENDER/cartesian_manager), which
+routes Cartesian commands to `qontrol_controller`. Petanque support and the
+legacy `sandbox_controller` path are preserved for compatibility, but new
+controller/UI development should target the manager stack.
 
 <p align="center">
   <img alt="ROS 2" src="https://img.shields.io/badge/ROS%202-Humble-22314e?style=for-the-badge" />
@@ -30,12 +33,17 @@ new controller/UI development should use Sandbox V0.0 with `sandbox_controller`.
 
 - WebSocket server for `extender_ui` at `/ws/control`.
 - Teleoperation bridge from frontend joystick/slider/mode state to
-  `extender_msgs/msg/TeleopCommand`.
+  `geometry_msgs/msg/TwistStamped` Cartesian commands for `cartesian_manager`.
+- Structured `std_msgs/msg/String` mode requests on `/mode_request`, validated
+  against the manager grammar before publication.
+- Legacy `extender_msgs/msg/TeleopCommand` output kept behind the
+  `command_backend` parameter as a rollback path.
 - Generic typed ROS publishers for frontend widgets.
 - Topic monitor bridge for small diagnostic ROS messages.
 - Browser-captured camera frame bridge to ROS compressed image topics.
-- Sandbox feedback bridge for end-effector pose, velocity command, and joint
-  pose state.
+- Robot feedback bridge for end-effector pose, end-effector velocity, and joint
+  state, reading either `sensor_msgs/msg/JointState` or the legacy
+  `std_msgs/msg/Float64MultiArray`.
 - Legacy Petanque, measure, gripper, and actuator bridges kept for
   compatibility.
 - Runtime state and backend events streamed back to the UI.
@@ -50,7 +58,7 @@ extender_ui Sandbox V0.0 screen
   -> websocket message
   -> tablet_interface
   -> ROS topic
-  -> sandbox_controller or perception node
+  -> cartesian_manager -> qontrol_controller, or a perception node
   -> ROS feedback
   -> tablet_interface
   -> UI state, topic monitor, or event
@@ -63,13 +71,14 @@ Current Sandbox V0.0 screens on the frontend:
 | `sandbox_control` | `teleop_cmd`, sandbox feedback state, typed widget publishing. |
 | `sandbox_teleop_config` | Teleop mapping and reusable widget configuration. |
 | `control_panel` | Teleop, webcam/camera frame flow, gripper, visual-servoing controls, and compact telemetry. |
-| `snake_control` | `teleop_cmd` plus typed boolean publication to `/activate_snake`. |
+| `snake_control` | Teleop plus a `geometric/snake` mode request held on `/mode_request`. |
 | `visual_servoing` | Typed ON/OFF and save-tag commands. |
 | `visual_servoing_monitor` | Topic snapshots for AprilTag and servo telemetry. |
 
-Use [`sandbox_controller`](https://github.com/ISIR-EXTENDER/sandbox_controller)
-for new robot control experiments. Petanque bridges remain available, but they
-should not be the default path for new features.
+Use [`cartesian_manager`](https://github.com/ISIR-EXTENDER/cartesian_manager)
+plus `qontrol_controller` for new robot control experiments.
+`sandbox_controller` and the Petanque bridges remain available as rollback
+paths, but they should not be the default for new features.
 
 ## Architecture
 
@@ -120,6 +129,7 @@ Incoming messages from the UI:
 | Message type | Purpose |
 | --- | --- |
 | `teleop_cmd` | Main normalized teleoperation command. |
+| `mode_request` | Structured `cartesian_manager` mode request. |
 | `ui_button` | Generic string command from button widgets. |
 | `ui_scalar` | Generic numeric command from slider/gain widgets. |
 | `ui_bool` | Generic boolean command. |
@@ -156,21 +166,38 @@ Outgoing messages to the UI:
 The backend validates finite values, applies mapping/scaling, applies safety
 rules, and republishes the command as ROS.
 
+### Mode Request Message
+
+```json
+{
+  "type": "mode_request",
+  "mode": "geometric/snake",
+  "widget_id": "snake-hold"
+}
+```
+
+The backend validates the mode against the `cartesian_manager` grammar and
+answers with a `MODE_REQUEST_OK` or `MODE_REQUEST_REJECTED` event.
+
 ### Typed UI Message
 
 ```json
 {
   "type": "ui_typed",
-  "topic": "/activate_snake",
-  "message_type": "std_msgs/msg/Bool",
-  "payload_text": "{data: true}",
-  "widget_id": "snake-enable"
+  "topic": "/mode_request",
+  "message_type": "std_msgs/msg/String",
+  "payload_text": "{data: geometric/snake}",
+  "widget_id": "snake-hold"
 }
 ```
 
 This powers widgets such as `ROS Message Toggle` and `Momentary ROS Message`.
 Use it when a frontend control should publish a specific ROS message type and
 payload.
+
+A `ui_typed` message addressed to `mode_request_topic` is routed through the same
+validation as a native `mode_request`, so a widget configured with a bad mode
+gets operator feedback instead of failing silently at the manager.
 
 ### Topic Subscribe Message
 
@@ -209,21 +236,76 @@ topic snapshot path.
 
 ### Teleoperation
 
+The output depends on the `command_backend` parameter.
+
+`command_backend: cartesian_manager` (default):
+
 | ROS topic | Message | Direction |
 | --- | --- | --- |
-| `/teleop_cmd` | `extender_msgs/msg/TeleopCommand` | backend -> controller |
+| `/joystick_cartesian_command` | `geometry_msgs/msg/TwistStamped` | backend -> cartesian_manager |
+| `/mode_request` | `std_msgs/msg/String` | backend -> cartesian_manager |
+
+`command_backend: teleop_command` (legacy rollback):
+
+| ROS topic | Message | Direction |
+| --- | --- | --- |
+| `/teleop_cmd` | `extender_msgs/msg/TeleopCommand` | backend -> sandbox_controller |
+
+Only the publisher for the selected backend is created, so a dead `/teleop_cmd`
+publisher never appears on the graph while running against the manager.
+
+> **Frames matter.** `cartesian_manager` performs no TF conversion. A command
+> whose `header.frame_id` is neither empty nor its `default_input_frame_id` is
+> dropped, and the robot simply stops with a warning in the manager log. Keep
+> `command_frame_id` equal to the manager's `default_input_frame_id`
+> (`base_link` in the Explorer bringup).
 
 The frontend widget `topic` fields such as `/cmd/joystick` or `/cmd/mode` are
 UI configuration metadata. They do not change the backend teleop output topic.
-Use the `teleop_cmd_topic` parameter to change the ROS output topic.
 
-### Sandbox Feedback
+### Mode Requests
+
+`cartesian_manager` selects its shapers from a plain string. The backend
+validates the grammar before publishing, so an invalid mode is reported to the
+operator as a `MODE_REQUEST_REJECTED` event instead of being silently ignored by
+the robot.
+
+| Mode request | Effect |
+| --- | --- |
+| `geometric/both` | No geometric shaping. Neutral state. |
+| `geometric/jaco` | Jaco shaper. |
+| `geometric/snake` | Snake shaper. |
+| `behaviour/passthrough` | No behaviour shaping. |
+| `behaviour/joint_target/<name>` | One-shot named joint target, such as `home`. |
+
+Requests are normalized the way the manager normalizes them: lowercased, with
+`-` replaced by `_`. `behaviour/joint_target/...` is one-shot, so it is not
+recorded as sticky state: the manager returns to passthrough by itself.
+
+B1/B2 are **not** manager modes. They only select which joystick axes drive
+translation and rotation, and the tablet resolves them locally before sending a
+twist. This matches how `joystick_mapper` treats its own local B1/B2 modes.
+
+The manager **sums all activated inputs** rather than arbitrating between them.
+The tablet is one input peer among joystick, head, hand, visual servoing, and
+shared control, so a non-zero tablet twist adds to whatever else is active. Send
+zeros on release, which the frontend already does through `stopAndZero`.
+
+The target architecture replaces `geometric/jaco` with `translation` and
+`orientation` behaviours. When that lands, the tablet's TRANSLATION and ROTATION
+modes should become real mode requests instead of local axis masks; the accepted
+list lives in `GEOMETRIC_MODES` in `tablet_interface/mode_request.py`.
+
+### Robot Feedback
 
 | Parameter | Default topic | Message | Direction |
 | --- | --- | --- | --- |
-| `sandbox_ee_pose_topic` | `/sandbox_controller/ee_pose` | `geometry_msgs/msg/PoseStamped` | controller -> backend -> UI |
-| `sandbox_velocity_command_topic` | `/sandbox_controller/velocity_command` | `geometry_msgs/msg/TwistStamped` | controller -> backend -> UI |
-| `sandbox_joint_pose_topic` | `/sandbox_controller/joint_pose` | joint state style payload | controller -> backend -> UI |
+| `sandbox_ee_pose_topic` | `/ee_pose` | `geometry_msgs/msg/PoseStamped` | qontrol -> backend -> UI |
+| `sandbox_velocity_command_topic` | `/ee_velocity` | `geometry_msgs/msg/TwistStamped` | qontrol -> backend -> UI |
+| `sandbox_joint_pose_topic` | `/joint_states` | `sensor_msgs/msg/JointState` | robot -> backend -> UI |
+
+Set `sandbox_joint_pose_message_type` to `std_msgs/msg/Float64MultiArray` to read
+joint feedback from a legacy `sandbox_controller` stack instead.
 
 ### Snake Control
 
@@ -293,7 +375,11 @@ Important parameters:
 
 | Parameter | Default | Purpose |
 | --- | --- | --- |
-| `teleop_cmd_topic` | `/teleop_cmd` | ROS output topic for teleop commands. |
+| `command_backend` | `cartesian_manager` | `cartesian_manager` or `teleop_command`. |
+| `cartesian_command_topic` | `/joystick_cartesian_command` | Cartesian command topic for `cartesian_manager`. |
+| `mode_request_topic` | `/mode_request` | Structured mode request topic. |
+| `command_frame_id` | `base_link` | Frame stamped on outgoing commands. Must match the manager. |
+| `teleop_cmd_topic` | `/teleop_cmd` | Legacy output topic, only used by the `teleop_command` backend. |
 | `publish_rate_hz` | `30.0` in code, profile-specific in YAML | Teleop publish timer rate. |
 | `linear_scale` | `0.2` in code, profile-specific in YAML | Linear command scaling. |
 | `angular_scale` | `0.5` in code, profile-specific in YAML | Angular command scaling. |
@@ -324,7 +410,9 @@ ROS workspace:
 | Package / repo | Required for |
 | --- | --- |
 | [`robot_interfaces/extender_msgs`](https://github.com/ISIR-EXTENDER/robot_interfaces) | `TeleopCommand` and shared Extender messages. |
-| [`sandbox_controller`](https://github.com/ISIR-EXTENDER/sandbox_controller) | Sandbox teleop and feedback loop. |
+| [`cartesian_manager`](https://github.com/ISIR-EXTENDER/cartesian_manager) | Routes Cartesian commands and mode requests to `qontrol_controller`. |
+| [`qontrol_controller`](https://github.com/ISIR-EXTENDER/qontrol_controller) | QP robot control and `/ee_*` feedback. Branch `topic/isir_manager`. |
+| [`sandbox_controller`](https://github.com/ISIR-EXTENDER/sandbox_controller) | Legacy sandbox teleop and feedback loop, rollback only. |
 | [`tools/apriltag_detector`](https://github.com/ISIR-EXTENDER/tools/tree/main/apriltag_detector) | AprilTag detections for visual servoing. |
 | [`visual_servoing`](https://github.com/ISIR-EXTENDER/visual_servoing) | Visual-servoing controller and telemetry topics. |
 | [`extender_ui`](https://github.com/ISIR-EXTENDER/extender_ui) | Frontend runtime and screen builder. |
@@ -336,7 +424,7 @@ From the Extender ROS workspace:
 ```bash
 uv sync
 colcon build --symlink-install --packages-select tablet_interface
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
 ```
 
@@ -351,7 +439,7 @@ make run-node
 Equivalent explicit command:
 
 ```bash
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 source ../../../install/setup.bash
 uv run python -m tablet_interface.main --ros-args \
   --params-file config/tablet_interface_parameters_explorer.yaml

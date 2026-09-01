@@ -14,17 +14,23 @@ from std_msgs.msg import Float32MultiArray, Float64MultiArray, String
 from extender_msgs.msg import TeleopCommand
 
 from tablet_interface.config import (
+    COMMAND_BACKEND_CARTESIAN_MANAGER,
+    COMMAND_BACKEND_TELEOP_COMMAND,
     declare_tablet_interface_parameters,
     load_tablet_interface_config,
 )
 from tablet_interface.actuator_bridge import ActuatorBridge
 from tablet_interface.camera_bridge import CameraBridge
+from tablet_interface.cartesian_manager_bridge import CartesianManagerBridge
 from tablet_interface.generic_publishers import GenericPublisherCache
 from tablet_interface.measure_bridge import MeasureBridge
 from tablet_interface.measure_codec import load_demo_measure_image_data_url
 from tablet_interface.petanque_bridge import PetanqueBridge
 from tablet_interface.runtime_state import TabletRuntimeState
-from tablet_interface.sandbox_bridge import SandboxBridge
+from tablet_interface.sandbox_bridge import (
+    SandboxBridge,
+    resolve_joint_pose_message_class,
+)
 from tablet_interface.teleop_mapping import map_and_scale, normalize_mapping
 from tablet_interface.topic_monitor_bridge import TopicMonitorBridge
 from tablet_interface.typed_message_publishers import TypedMessagePublisherCache
@@ -45,6 +51,10 @@ class TabletInterfaceNode(Node):
         declare_tablet_interface_parameters(self)
         config = load_tablet_interface_config(self)
 
+        self.command_backend = config.command_backend
+        self.cartesian_command_topic = config.cartesian_command_topic
+        self.mode_request_topic = config.mode_request_topic
+        self.command_frame_id = config.command_frame_id
         self.teleop_cmd_topic = config.teleop_cmd_topic
         self.publish_rate_hz = config.publish_rate_hz
         self.linear_scale = config.linear_scale
@@ -78,6 +88,7 @@ class TabletInterfaceNode(Node):
         self.sandbox_ee_pose_topic = config.sandbox_ee_pose_topic
         self.sandbox_velocity_command_topic = config.sandbox_velocity_command_topic
         self.sandbox_joint_pose_topic = config.sandbox_joint_pose_topic
+        self.sandbox_joint_pose_message_type = config.sandbox_joint_pose_message_type
         self.sandbox_toggle_output_topic = config.sandbox_toggle_output_topic
         self.sandbox_toggle_output_message_type = (
             config.sandbox_toggle_output_message_type
@@ -124,7 +135,27 @@ class TabletInterfaceNode(Node):
         self._ensure_sandbox_toggle_output_publisher()
         self._ensure_eager_typed_publishers()
 
-        self._publisher = self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
+        self._uses_cartesian_manager = (
+            self.command_backend == COMMAND_BACKEND_CARTESIAN_MANAGER
+        )
+
+        # The legacy TeleopCommand publisher is only created for the legacy
+        # backend. Advertising it unconditionally would leave a dead /teleop_cmd
+        # publisher on the graph, which is exactly the confusion the migration
+        # is meant to remove.
+        self._publisher = (
+            self.create_publisher(TeleopCommand, self.teleop_cmd_topic, 10)
+            if self.command_backend == COMMAND_BACKEND_TELEOP_COMMAND
+            else None
+        )
+        self._cartesian_command_publisher = (
+            self.create_publisher(TwistStamped, self.cartesian_command_topic, 10)
+            if self._uses_cartesian_manager
+            else None
+        )
+        self._mode_request_publisher = self.create_publisher(
+            String, self.mode_request_topic, 10
+        )
         self._state_cmd_publisher = self.create_publisher(
             String, self.state_machine_topic, 10
         )
@@ -172,16 +203,7 @@ class TabletInterfaceNode(Node):
             if self.sandbox_velocity_command_topic
             else None
         )
-        self._sandbox_joint_pose_subscription = (
-            self.create_subscription(
-                Float64MultiArray,
-                self.sandbox_joint_pose_topic,
-                self._on_sandbox_joint_pose,
-                10,
-            )
-            if self.sandbox_joint_pose_topic
-            else None
-        )
+        self._sandbox_joint_pose_subscription = self._create_joint_pose_subscription()
         self._petanque_param_client = self.create_client(
             SetParameters, self.petanque_param_service
         )
@@ -206,6 +228,16 @@ class TabletInterfaceNode(Node):
             result_vectors_topic=self.measure_result_vectors_topic,
         )
         self._sandbox_bridge = SandboxBridge(runtime_state=self._runtime_state)
+        self._cartesian_manager_bridge = CartesianManagerBridge(
+            logger=self.get_logger(),
+            command_publisher=self._cartesian_command_publisher,
+            mode_request_publisher=self._mode_request_publisher,
+            runtime_state=self._runtime_state,
+            now_msg=lambda: self.get_clock().now().to_msg(),
+            command_topic=self.cartesian_command_topic,
+            mode_request_topic=self.mode_request_topic,
+            command_frame_id=self.command_frame_id,
+        )
         self._actuator_bridge = ActuatorBridge(
             logger=self.get_logger(),
             gripper_publisher=self._gripper_publisher,
@@ -255,8 +287,20 @@ class TabletInterfaceNode(Node):
             )
         )
         self.get_logger().info(
-            "Teleop params: topic={0} publish_rate_hz={1:.1f} accept_mode_from_client={2}".format(
-                self.teleop_cmd_topic,
+            "Command backend: {0} ({1})".format(
+                self.command_backend,
+                self._cartesian_manager_bridge.describe()
+                if self._uses_cartesian_manager
+                else f"legacy TeleopCommand on {self.teleop_cmd_topic}",
+            )
+        )
+        if self._uses_cartesian_manager and not self.command_frame_id:
+            self.get_logger().warning(
+                "command_frame_id is empty; cartesian_manager will treat commands "
+                "as being in its default_input_frame_id"
+            )
+        self.get_logger().info(
+            "Teleop params: publish_rate_hz={0:.1f} accept_mode_from_client={1}".format(
                 self.publish_rate_hz,
                 str(self.accept_mode_from_client).lower(),
             )
@@ -292,12 +336,13 @@ class TabletInterfaceNode(Node):
             )
         )
         self.get_logger().info(
-            "Sandbox feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2} toggle_output_topic={3} toggle_output_message_type={4}".format(
+            "Robot feedback: ee_pose_topic={0} velocity_topic={1} joint_pose_topic={2} ({5}) toggle_output_topic={3} toggle_output_message_type={4}".format(
                 self.sandbox_ee_pose_topic or "disabled",
                 self.sandbox_velocity_command_topic or "disabled",
                 self.sandbox_joint_pose_topic or "disabled",
                 self.sandbox_toggle_output_topic or "disabled",
                 self._resolve_sandbox_toggle_output_message_type() or "disabled",
+                self.sandbox_joint_pose_message_type,
             )
         )
         self.get_logger().info(
@@ -535,7 +580,7 @@ class TabletInterfaceNode(Node):
     def _on_sandbox_velocity_command(self, msg: TwistStamped) -> None:
         self._sandbox_bridge.on_velocity_command(msg)
 
-    def _on_sandbox_joint_pose(self, msg: Float64MultiArray) -> None:
+    def _on_sandbox_joint_pose(self, msg) -> None:
         self._sandbox_bridge.on_joint_pose(msg)
 
     def publish_camera_frame(self, *, topic: str, image_data_url: str) -> bool:
@@ -562,10 +607,40 @@ class TabletInterfaceNode(Node):
         mode = self._runtime_state.get_current_mode()
         self._runtime_state.clear_events()
 
-        msg = TeleopCommand()
-        msg.twist = twist
-        msg.mode = int(mode)
-        self._publisher.publish(msg)
+        if self._cartesian_command_publisher is not None:
+            self._cartesian_manager_bridge.publish_command(twist)
+            return
+
+        if self._publisher is not None:
+            msg = TeleopCommand()
+            msg.twist = twist
+            msg.mode = int(mode)
+            self._publisher.publish(msg)
+
+    def request_mode(self, raw_mode: str) -> tuple[bool, str]:
+        """Send a structured mode request to ``cartesian_manager``."""
+        return self._cartesian_manager_bridge.request_mode(raw_mode)
+
+    def _create_joint_pose_subscription(self):
+        if not self.sandbox_joint_pose_topic:
+            return None
+
+        try:
+            message_class = resolve_joint_pose_message_class(
+                self.sandbox_joint_pose_message_type
+            )
+        except ValueError as exc:
+            self.get_logger().warning(
+                f"Joint feedback disabled: {exc}"
+            )
+            return None
+
+        return self.create_subscription(
+            message_class,
+            self.sandbox_joint_pose_topic,
+            self._on_sandbox_joint_pose,
+            10,
+        )
 
     def _ensure_configured_topic_monitors(self) -> None:
         for raw_spec in self.topic_monitor_specs:

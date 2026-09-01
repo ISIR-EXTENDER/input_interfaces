@@ -2,11 +2,32 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from rcl_interfaces.msg import ParameterDescriptor, ParameterType
+from rclpy.exceptions import ParameterUninitializedException
 from rclpy.node import Node
+
+
+#: Publish tablet teleop as ``cartesian_manager`` inputs (TwistStamped + mode
+#: requests). This is the current control stack.
+COMMAND_BACKEND_CARTESIAN_MANAGER = "cartesian_manager"
+
+#: Publish the legacy ``extender_msgs/TeleopCommand`` consumed by
+#: ``sandbox_controller`` and ``controllers/cartesian_velocity``. Kept as a
+#: rollback path while the manager stack is being validated on hardware.
+COMMAND_BACKEND_TELEOP_COMMAND = "teleop_command"
+
+COMMAND_BACKENDS = (
+    COMMAND_BACKEND_CARTESIAN_MANAGER,
+    COMMAND_BACKEND_TELEOP_COMMAND,
+)
 
 
 @dataclass(frozen=True)
 class TabletInterfaceConfig:
+    command_backend: str
+    cartesian_command_topic: str
+    mode_request_topic: str
+    command_frame_id: str
     teleop_cmd_topic: str
     publish_rate_hz: float
     linear_scale: float
@@ -38,6 +59,7 @@ class TabletInterfaceConfig:
     sandbox_ee_pose_topic: str
     sandbox_velocity_command_topic: str
     sandbox_joint_pose_topic: str
+    sandbox_joint_pose_message_type: str
     sandbox_toggle_output_topic: str
     sandbox_toggle_output_message_type: str
     sandbox_toggle_output_mode: str
@@ -48,6 +70,12 @@ class TabletInterfaceConfig:
 
 
 PARAMETER_DEFAULTS = {
+    "command_backend": COMMAND_BACKEND_CARTESIAN_MANAGER,
+    "cartesian_command_topic": "/joystick_cartesian_command",
+    "mode_request_topic": "/mode_request",
+    # cartesian_manager does no TF conversion. This must match its
+    # default_input_frame_id, or every command is dropped with a warning.
+    "command_frame_id": "base_link",
     "teleop_cmd_topic": "/teleop_cmd",
     "publish_rate_hz": 30.0,
     "linear_scale": 0.2,
@@ -76,15 +104,16 @@ PARAMETER_DEFAULTS = {
     "measure_request_image_topic": "/petanque/measure/request_image/compressed",
     "measure_result_image_topic": "/petanque/measure/result_image/compressed",
     "measure_result_vectors_topic": "/petanque/measure/result_vectors",
-    "sandbox_ee_pose_topic": "/sandbox_controller/ee_pose",
-    "sandbox_velocity_command_topic": "/sandbox_controller/velocity_command",
-    "sandbox_joint_pose_topic": "/sandbox_controller/joint_pose",
+    # Feedback now comes from qontrol_controller through cartesian_manager
+    # instead of sandbox_controller.
+    "sandbox_ee_pose_topic": "/ee_pose",
+    "sandbox_velocity_command_topic": "/ee_velocity",
+    "sandbox_joint_pose_topic": "/joint_states",
+    "sandbox_joint_pose_message_type": "sensor_msgs/msg/JointState",
     "sandbox_toggle_output_topic": "/sandbox/digital_output",
     "sandbox_toggle_output_message_type": "std_msgs/msg/Float64",
     "sandbox_toggle_output_mode": "numeric",
-    "eager_typed_publishers": [
-        "/activate_snake|std_msgs/msg/Bool",
-    ],
+    "eager_typed_publishers": [],
     "topic_snapshot_hz": 10.0,
     "topic_monitor_specs": [
         "/tag_detections|extender_msgs/msg/SharedControlGoalArray",
@@ -95,13 +124,69 @@ PARAMETER_DEFAULTS = {
 }
 
 
+def read_string_array_parameter(node: Node, name: str) -> list[str]:
+    """Read a string-array parameter, tolerating an empty declaration.
+
+    rclpy cannot infer a type for an empty list, so an empty default is declared
+    through a descriptor and stays uninitialized until something sets it.
+    ``get_parameter`` raises in that state, so an empty list is returned instead.
+    """
+    try:
+        value = node.get_parameter(name).value
+    except ParameterUninitializedException:
+        return []
+    if value is None:
+        return []
+    return [str(item) for item in value]
+
+
+def normalize_command_backend(value: str, *, logger=None) -> str:
+    """Resolve the configured command backend, falling back to the current stack.
+
+    An unknown value is a configuration mistake that would otherwise be noticed
+    only when the robot does not move, so it is reported and coerced rather than
+    left to fail silently.
+    """
+    normalized = value.strip().lower().replace("-", "_")
+    if normalized in COMMAND_BACKENDS:
+        return normalized
+
+    if logger is not None:
+        logger.warning(
+            "Unknown command_backend '{0}', falling back to '{1}'. Expected one of {2}.".format(
+                value,
+                COMMAND_BACKEND_CARTESIAN_MANAGER,
+                ", ".join(COMMAND_BACKENDS),
+            )
+        )
+    return COMMAND_BACKEND_CARTESIAN_MANAGER
+
+
 def declare_tablet_interface_parameters(node: Node) -> None:
     for name, default in PARAMETER_DEFAULTS.items():
+        if isinstance(default, list) and not default:
+            # rclpy cannot infer the element type of an empty list, so an empty
+            # default needs an explicit descriptor.
+            node.declare_parameter(
+                name,
+                default,
+                ParameterDescriptor(type=ParameterType.PARAMETER_STRING_ARRAY),
+            )
+            continue
         node.declare_parameter(name, default)
 
 
 def load_tablet_interface_config(node: Node) -> TabletInterfaceConfig:
     return TabletInterfaceConfig(
+        command_backend=normalize_command_backend(
+            str(node.get_parameter("command_backend").value),
+            logger=node.get_logger(),
+        ),
+        cartesian_command_topic=str(
+            node.get_parameter("cartesian_command_topic").value
+        ),
+        mode_request_topic=str(node.get_parameter("mode_request_topic").value),
+        command_frame_id=str(node.get_parameter("command_frame_id").value),
         teleop_cmd_topic=str(node.get_parameter("teleop_cmd_topic").value),
         publish_rate_hz=float(node.get_parameter("publish_rate_hz").value),
         linear_scale=float(node.get_parameter("linear_scale").value),
@@ -149,6 +234,9 @@ def load_tablet_interface_config(node: Node) -> TabletInterfaceConfig:
         sandbox_joint_pose_topic=str(
             node.get_parameter("sandbox_joint_pose_topic").value
         ),
+        sandbox_joint_pose_message_type=str(
+            node.get_parameter("sandbox_joint_pose_message_type").value
+        ),
         sandbox_toggle_output_topic=str(
             node.get_parameter("sandbox_toggle_output_topic").value
         ),
@@ -158,15 +246,13 @@ def load_tablet_interface_config(node: Node) -> TabletInterfaceConfig:
         sandbox_toggle_output_mode=str(
             node.get_parameter("sandbox_toggle_output_mode").value
         ),
-        eager_typed_publishers=[
-            str(value)
-            for value in node.get_parameter("eager_typed_publishers").value
-        ],
+        eager_typed_publishers=read_string_array_parameter(
+            node, "eager_typed_publishers"
+        ),
         topic_snapshot_hz=float(node.get_parameter("topic_snapshot_hz").value),
-        topic_monitor_specs=[
-            str(value)
-            for value in node.get_parameter("topic_monitor_specs").value
-        ],
+        topic_monitor_specs=read_string_array_parameter(
+            node, "topic_monitor_specs"
+        ),
         param_call_timeout_sec=float(
             node.get_parameter("param_call_timeout_sec").value
         ),

@@ -61,6 +61,18 @@ class PetanqueConfigMessage(BaseModel):
         return self
 
 
+class ModeRequestMessage(BaseModel):
+    """Structured mode request forwarded to ``cartesian_manager``.
+
+    The grammar is validated in ``tablet_interface.mode_request``; this model only
+    guarantees a non-empty string reaches it.
+    """
+
+    type: Literal["mode_request"]
+    mode: str = Field(min_length=1, max_length=128)
+    widget_id: str | None = None
+
+
 class UiButtonMessage(BaseModel):
     type: Literal["ui_button"]
     topic: str = Field(min_length=1)
@@ -159,6 +171,7 @@ class StateMessage(BaseModel):
     last_seq: conint(strict=True, ge=0)
     publishing_rate_hz: confloat(strict=True, ge=0)
     current_mode: conint(strict=True, ge=0, le=4)
+    mode_request: str | None = None
     gripper_state: Literal["open", "close", "unknown"] | None = None
     ee_pose: PositionMessage | None = None
     tcp_speed_mps: confloat(ge=0.0, allow_inf_nan=False) | None = None
@@ -177,6 +190,7 @@ __all__ = [
     "StateCmdMessage",
     "GripperCmdMessage",
     "PetanqueConfigMessage",
+    "ModeRequestMessage",
     "UiButtonMessage",
     "UiScalarMessage",
     "UiBoolMessage",

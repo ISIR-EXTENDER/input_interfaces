@@ -1,5 +1,14 @@
 tablet_interface_node:
   ros__parameters:
+    # Command backend: "cartesian_manager" (current stack) or "teleop_command"
+    # (legacy sandbox_controller path, kept as rollback).
+    command_backend: "cartesian_manager"
+    cartesian_command_topic: "/joystick_cartesian_command"
+    mode_request_topic: "/mode_request"
+    # Must match cartesian_manager default_input_frame_id. cartesian_manager does
+    # no TF conversion and drops commands stamped with any other frame.
+    command_frame_id: "base_link"
+    # Only used when command_backend is "teleop_command".
     teleop_cmd_topic: "/teleop_cmd"
     publish_rate_hz: 100.0
     linear_scale: 0.035
@@ -28,14 +37,16 @@ tablet_interface_node:
     measure_request_image_topic: "/petanque/measure/request_image/compressed"
     measure_result_image_topic: "/petanque/measure/result_image/compressed"
     measure_result_vectors_topic: "/petanque/measure/result_vectors"
-    sandbox_ee_pose_topic: "/sandbox_controller/ee_pose"
-    sandbox_velocity_command_topic: "/sandbox_controller/velocity_command"
-    sandbox_joint_pose_topic: "/sandbox_controller/joint_pose"
+    # Feedback comes from qontrol_controller via cartesian_manager.
+    sandbox_ee_pose_topic: "/ee_pose"
+    sandbox_velocity_command_topic: "/ee_velocity"
+    sandbox_joint_pose_topic: "/joint_states"
+    sandbox_joint_pose_message_type: "sensor_msgs/msg/JointState"
     sandbox_toggle_output_topic: "/sandbox/digital_output"
     sandbox_toggle_output_message_type: "std_msgs/msg/Float64"
     sandbox_toggle_output_mode: "numeric"
-    eager_typed_publishers:
-      - "/activate_snake|std_msgs/msg/Bool"
+    # Snake is now a cartesian_manager mode request, not a Bool topic.
+    eager_typed_publishers: []
     topic_snapshot_hz: 10.0
     topic_monitor_specs:
       - "/tag_detections|extender_msgs/msg/SharedControlGoalArray"
