@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Mouse Joystick Interface</title>
+  <style>
+    body {
+      margin: 0;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #111;
+      color: #f5f5f5;
+      font-family: sans-serif;
+      user-select: none;
+    }
+
+    .wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      width: 100vw;
+      height: 100vh;
+      justify-content: center;
+    }
+
+    .pad {
+      width: min(92vw, calc(100vh - 110px));
+      height: min(92vw, calc(100vh - 110px));
+      border-radius: 50%;
+      border: 2px solid #666;
+      position: relative;
+      background: #1e1e1e;
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    .knob {
+      width: 70px;
+      height: 70px;
+      border-radius: 50%;
+      background: #3fa9f5;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+    }
+
+    .values {
+      font-size: 18px;
+      min-width: 220px;
+      text-align: center;
+    }
+
+    .mode-toggle {
+      font-size: 16px;
+      padding: 8px 14px;
+      border-radius: 8px;
+      border: 1px solid #666;
+      background: #2a2a2a;
+      color: #f5f5f5;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <button id="modeToggle" class="mode-toggle">Mode: Click</button>
+    <div id="pad" class="pad">
+      <div id="knob" class="knob"></div>
+    </div>
+    <div id="values" class="values">x: 0.00, y: 0.00</div>
+  </div>
+
+  <script>
+    const pad = document.getElementById('pad');
+    const knob = document.getElementById('knob');
+    const values = document.getElementById('values');
+    const modeToggle = document.getElementById('modeToggle');
+
+    let dragging = false;
+    let hoverActive = false;
+    let lastSent = 0;
+    let holdSendTimer = null;
+    let interactionMode = 'click';
+    let latestTeleop = { x: 0, y: 0 };
+
+    // Publish at roughly 30 Hz while the joystick is held in click mode.
+    const sendIntervalMs = 33;
+    const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    /**
+     * Send normalized joystick coordinates to the ROS bridge endpoint.
+     *
+     * @param {number} x - Normalized forward/backward command in [-1, 1].
+     * @param {number} y - Normalized left/right command in [-1, 1].
+     */
+    function sendTeleop(x, y) {
+      fetch('/teleop', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ x, y })
+      }).catch(() => {});
+    }
+
+    /** Re-send the most recent joystick command and update the throttle clock. */
+    function sendLatestTeleop() {
+      sendTeleop(latestTeleop.x, latestTeleop.y);
+      lastSent = performance.now();
+    }
+
+    /** Stop the repeated sender used while a click-mode drag is held. */
+    function stopHoldSend() {
+      if (holdSendTimer === null) return;
+      clearInterval(holdSendTimer);
+      holdSendTimer = null;
+    }
+
+    /** Start a repeated sender so a stationary held joystick keeps publishing. */
+    function startHoldSend() {
+      stopHoldSend();
+      holdSendTimer = setInterval(() => {
+        if (!dragging || interactionMode !== 'click') {
+          stopHoldSend();
+          return;
+        }
+        sendLatestTeleop();
+      }, sendIntervalMs);
+    }
+
+    /**
+     * Move the visual joystick and publish its normalized coordinates.
+     *
+     * @param {number} clientX - Pointer x-coordinate in viewport pixels.
+     * @param {number} clientY - Pointer y-coordinate in viewport pixels.
+     * @param {Object} [options] - Update options.
+     * @param {boolean} [options.forceSend=false] - Bypass the send throttle.
+     */
+    function updateJoystick(clientX, clientY, { forceSend = false } = {}) {
+      const rect = pad.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const radius = rect.width / 2;
+      const knobRadius = knob.getBoundingClientRect().width / 2;
+      const maxTravel = Math.max(1, radius - knobRadius);
+
+      let dx = clientX - cx;
+      let dy = clientY - cy;
+
+      const distance = Math.hypot(dx, dy);
+      // Keep the knob inside the circular pad while preserving direction.
+      if (distance > maxTravel) {
+        const scale = maxTravel / distance;
+        dx *= scale;
+        dy *= scale;
+      }
+
+      const x = clamp(dx / maxTravel, -1, 1);
+      // DOM y grows downward; teleop y is positive upward on the pad.
+      const y = clamp(-dy / maxTravel, -1, 1);
+
+      knob.style.left = `calc(50% + ${dx}px)`;
+      knob.style.top = `calc(50% + ${dy}px)`;
+      values.textContent = `x: ${x.toFixed(2)}, y: ${y.toFixed(2)}`;
+      latestTeleop = { x, y };
+
+      const now = performance.now();
+      if (forceSend || now - lastSent >= sendIntervalMs) {
+        sendLatestTeleop();
+      }
+    }
+
+    /** Return the UI and published command to the neutral joystick position. */
+    function centerJoystick() {
+      knob.style.left = '50%';
+      knob.style.top = '50%';
+      values.textContent = 'x: 0.00, y: 0.00';
+      latestTeleop = { x: 0, y: 0 };
+      sendTeleop(0, 0);
+    }
+
+    pad.addEventListener('pointerdown', (event) => {
+      if (interactionMode !== 'click') return;
+      dragging = true;
+      pad.setPointerCapture(event.pointerId);
+      updateJoystick(event.clientX, event.clientY, { forceSend: true });
+      startHoldSend();
+    });
+
+    pad.addEventListener('pointermove', (event) => {
+      if (interactionMode === 'click' && !dragging) return;
+      if (interactionMode === 'hover' && !hoverActive) return;
+      updateJoystick(event.clientX, event.clientY);
+    });
+
+    const stop = (event) => {
+      if (interactionMode !== 'click') return;
+      if (event && pad.hasPointerCapture(event.pointerId)) {
+        pad.releasePointerCapture(event.pointerId);
+      }
+      if (!dragging) return;
+      dragging = false;
+      stopHoldSend();
+      centerJoystick();
+    };
+
+    pad.addEventListener('pointerenter', () => {
+      if (interactionMode !== 'hover') return;
+      hoverActive = true;
+    });
+
+    pad.addEventListener('pointerleave', () => {
+      if (interactionMode !== 'hover') return;
+      hoverActive = false;
+      centerJoystick();
+    });
+
+    pad.addEventListener('pointerup', stop);
+    pad.addEventListener('pointercancel', stop);
+    pad.addEventListener('lostpointercapture', stop);
+
+    modeToggle.addEventListener('click', () => {
+      interactionMode = interactionMode === 'click' ? 'hover' : 'click';
+      modeToggle.textContent = interactionMode === 'click' ? 'Mode: Click' : 'Mode: Mouseover';
+      dragging = false;
+      hoverActive = false;
+      stopHoldSend();
+      centerJoystick();
+    });
+  </script>
+</body>
+</html>

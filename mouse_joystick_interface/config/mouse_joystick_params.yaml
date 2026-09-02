@@ -1,0 +1,11 @@
+mouse_joystick_interface:
+  ros__parameters:
+    # Local HTTP endpoint used by the browser-based joystick UI.
+    host: "127.0.0.5"
+    port: 8765
+
+    # If a graphical session is available, open the UI automatically at startup.
+    auto_open_browser: true
+
+    # Output topic for extender_msgs/msg/TeleopCommand translation commands.
+    teleop_topic: "teleop_cmd"
