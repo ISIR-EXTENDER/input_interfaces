@@ -7,5 +7,20 @@ mouse_joystick_interface:
     # If a graphical session is available, open the UI automatically at startup.
     auto_open_browser: true
 
-    # Output topic for extender_msgs/msg/TeleopCommand translation commands.
+    # Output message selection: "twist" keeps the existing TeleopCommand
+    # wrapper, while "joy" publishes sensor_msgs/msg/Joy.
+    output_type: "joy"
+
+    # Output topic used when output_type is "twist".
     teleop_topic: "teleop_cmd"
+
+    # Topic and browser-coordinate mapping used when output_type is "joy".
+    joy_topic: "/joy"
+    joy_axis_count: 2
+    joy_axes:
+      x:
+        index: 0
+        scale: 1.0
+      y:
+        index: 1
+        scale: 1.0
