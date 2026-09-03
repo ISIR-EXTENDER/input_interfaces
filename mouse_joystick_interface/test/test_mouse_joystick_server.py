@@ -178,13 +178,13 @@ def test_runtime_config_exposes_button_types_only_in_joy_mode():
     assert _build_runtime_config('twist', button_types) == {'output_type': 'twist'}
 
 
-def test_checked_in_yaml_explicitly_defaults_every_button_to_press():
+def test_checked_in_yaml_explicitly_configures_every_button_type():
     config_path = Path(__file__).resolve().parents[1] / 'config' / 'mouse_joystick_params.yaml'
     config = config_path.read_text()
     positions = []
 
     for index in range(12):
-        match = re.search(rf'button_{index}:\s+type: "press"', config)
+        match = re.search(rf'button_{index}:\s+type: "(press|toggle)"', config)
         assert match is not None
         positions.append(match.start())
     assert positions == sorted(positions)
@@ -202,6 +202,9 @@ def test_web_ui_contains_hidden_four_by_three_joy_button_grid():
     assert "joyButtonTypes[index] === 'toggle'" in html
     assert 'releaseActivePressButtons' in html
     assert 'if (joyModeEnabled) sendLatestTeleop()' in html
+    assert '.joy-button[data-button-type="toggle"]' in html
+    assert '.joy-button[data-button-type="toggle"].active' in html
+    assert 'content: "TOGGLE"' in html
 
 
 @pytest.mark.parametrize(

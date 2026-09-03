@@ -49,6 +49,6 @@ mouse_joystick_interface:
       button_9:
         type: "press"
       button_10:
-        type: "toggle"
+        type: "press"
       button_11:
         type: "toggle"

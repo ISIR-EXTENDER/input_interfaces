@@ -37,6 +37,8 @@ The node continues publishing at approximately 30 Hz while a press button is
 held or a toggle button is latched on. Reloading the page initializes and
 publishes an all-zero button state. The browser obtains the active mode and its
 ordered `joy_button_types` list from the read-only `GET /config` endpoint.
+Toggle controls use an amber pill design with a visible `TOGGLE` label, while
+press controls retain the rectangular blue-active design.
 
 Joy mode uses the following mapping parameters:
 
