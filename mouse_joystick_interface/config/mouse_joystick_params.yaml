@@ -24,3 +24,31 @@ mouse_joystick_interface:
       y:
         index: 1
         scale: 1.0
+
+    # Per-button interaction behavior: "press" is momentary, while "toggle"
+    # latches the button on or off on each pointer press.
+    joy_buttons:
+      button_0:
+        type: "press"
+      button_1:
+        type: "press"
+      button_2:
+        type: "press"
+      button_3:
+        type: "press"
+      button_4:
+        type: "press"
+      button_5:
+        type: "press"
+      button_6:
+        type: "press"
+      button_7:
+        type: "press"
+      button_8:
+        type: "press"
+      button_9:
+        type: "press"
+      button_10:
+        type: "toggle"
+      button_11:
+        type: "toggle"

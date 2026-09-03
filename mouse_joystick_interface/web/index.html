@@ -65,6 +65,39 @@
       color: #f5f5f5;
       cursor: pointer;
     }
+
+    .button-grid {
+      width: min(92vw, 380px);
+      display: grid;
+      grid-template-columns: repeat(4, minmax(56px, 1fr));
+      gap: 8px;
+    }
+
+    .button-grid[hidden] {
+      display: none;
+    }
+
+    .joy-button {
+      min-height: 44px;
+      border-radius: 8px;
+      border: 1px solid #666;
+      background: #2a2a2a;
+      color: #f5f5f5;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .joy-button.active {
+      border-color: #3fa9f5;
+      background: #176da8;
+    }
+
+    body.joy-output .pad {
+      width: min(92vw, calc(100vh - 285px));
+      height: min(92vw, calc(100vh - 285px));
+    }
   </style>
 </head>
 <body>
@@ -74,6 +107,20 @@
       <div id="knob" class="knob"></div>
     </div>
     <div id="values" class="values">x: 0.00, y: 0.00</div>
+    <div id="joyButtons" class="button-grid" hidden>
+      <button class="joy-button" data-button-index="0" aria-pressed="false">0</button>
+      <button class="joy-button" data-button-index="1" aria-pressed="false">1</button>
+      <button class="joy-button" data-button-index="2" aria-pressed="false">2</button>
+      <button class="joy-button" data-button-index="3" aria-pressed="false">3</button>
+      <button class="joy-button" data-button-index="4" aria-pressed="false">4</button>
+      <button class="joy-button" data-button-index="5" aria-pressed="false">5</button>
+      <button class="joy-button" data-button-index="6" aria-pressed="false">6</button>
+      <button class="joy-button" data-button-index="7" aria-pressed="false">7</button>
+      <button class="joy-button" data-button-index="8" aria-pressed="false">8</button>
+      <button class="joy-button" data-button-index="9" aria-pressed="false">9</button>
+      <button class="joy-button" data-button-index="10" aria-pressed="false">10</button>
+      <button class="joy-button" data-button-index="11" aria-pressed="false">11</button>
+    </div>
   </div>
 
   <script>
@@ -81,15 +128,21 @@
     const knob = document.getElementById('knob');
     const values = document.getElementById('values');
     const modeToggle = document.getElementById('modeToggle');
+    const joyButtonGrid = document.getElementById('joyButtons');
+    const joyButtonElements = Array.from(document.querySelectorAll('.joy-button'));
 
     let dragging = false;
     let hoverActive = false;
+    let joyModeEnabled = false;
     let lastSent = 0;
     let holdSendTimer = null;
     let interactionMode = 'click';
     let latestTeleop = { x: 0, y: 0 };
+    let joyButtonTypes = Array(12).fill('press');
+    const joyButtonState = Array(12).fill(0);
+    const activePressPointers = new Map();
 
-    // Publish at roughly 30 Hz while the joystick is held in click mode.
+    // Publish at roughly 30 Hz while the joystick or any Joy button is held.
     const sendIntervalMs = 33;
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
 
@@ -103,7 +156,8 @@
       fetch('/teleop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y })
+        body: JSON.stringify({ x, y, buttons: joyButtonState }),
+        keepalive: true
       }).catch(() => {});
     }
 
@@ -120,11 +174,22 @@
       holdSendTimer = null;
     }
 
-    /** Start a repeated sender so a stationary held joystick keeps publishing. */
-    function startHoldSend() {
-      stopHoldSend();
+    /** Return whether an active joystick or button needs repeated publishing. */
+    function shouldRepeatSend() {
+      const joystickHeld = dragging && interactionMode === 'click';
+      return joystickHeld || joyButtonState.some((value) => value === 1);
+    }
+
+    /** Keep a roughly 30 Hz sender active while the joystick or a button is held. */
+    function updateHoldSend() {
+      if (!shouldRepeatSend()) {
+        stopHoldSend();
+        return;
+      }
+      if (holdSendTimer !== null) return;
+
       holdSendTimer = setInterval(() => {
-        if (!dragging || interactionMode !== 'click') {
+        if (!shouldRepeatSend()) {
           stopHoldSend();
           return;
         }
@@ -188,7 +253,7 @@
       dragging = true;
       pad.setPointerCapture(event.pointerId);
       updateJoystick(event.clientX, event.clientY, { forceSend: true });
-      startHoldSend();
+      updateHoldSend();
     });
 
     pad.addEventListener('pointermove', (event) => {
@@ -204,8 +269,8 @@
       }
       if (!dragging) return;
       dragging = false;
-      stopHoldSend();
       centerJoystick();
+      updateHoldSend();
     };
 
     pad.addEventListener('pointerenter', () => {
@@ -228,9 +293,106 @@
       modeToggle.textContent = interactionMode === 'click' ? 'Mode: Click' : 'Mode: Mouseover';
       dragging = false;
       hoverActive = false;
-      stopHoldSend();
       centerJoystick();
+      updateHoldSend();
     });
+
+    /** Update one Joy button and immediately publish the complete current state. */
+    function setJoyButtonState(index, pressed) {
+      const value = pressed ? 1 : 0;
+      if (joyButtonState[index] === value) return;
+
+      joyButtonState[index] = value;
+      const element = joyButtonElements[index];
+      element.classList.toggle('active', pressed);
+      element.setAttribute('aria-pressed', pressed ? 'true' : 'false');
+      sendLatestTeleop();
+      updateHoldSend();
+    }
+
+    /** Release a press-type button owned by a pointer, including cancellations. */
+    function releasePressPointer(event) {
+      const index = activePressPointers.get(event.pointerId);
+      if (index === undefined) return;
+
+      activePressPointers.delete(event.pointerId);
+      setJoyButtonState(index, false);
+    }
+
+    joyButtonElements.forEach((button) => {
+      const index = Number(button.dataset.buttonIndex);
+      button.addEventListener('pointerdown', (event) => {
+        if (!joyModeEnabled) return;
+        event.preventDefault();
+
+        if (joyButtonTypes[index] === 'toggle') {
+          setJoyButtonState(index, joyButtonState[index] === 0);
+          return;
+        }
+
+        if (joyButtonState[index] === 1) return;
+        activePressPointers.set(event.pointerId, index);
+        button.setPointerCapture(event.pointerId);
+        setJoyButtonState(index, true);
+      });
+      button.addEventListener('pointerup', releasePressPointer);
+      button.addEventListener('pointercancel', releasePressPointer);
+      button.addEventListener('lostpointercapture', releasePressPointer);
+    });
+
+    /** Release active press buttons without changing latched toggle buttons. */
+    function releaseActivePressButtons() {
+      const pressedIndexes = new Set(activePressPointers.values());
+      activePressPointers.clear();
+      let changed = false;
+      pressedIndexes.forEach((index) => {
+        if (joyButtonState[index] === 0) return;
+        changed = true;
+        joyButtonState[index] = 0;
+        joyButtonElements[index].classList.remove('active');
+        joyButtonElements[index].setAttribute('aria-pressed', 'false');
+      });
+      if (!changed) return;
+      sendLatestTeleop();
+      updateHoldSend();
+    }
+
+    window.addEventListener('blur', releaseActivePressButtons);
+    window.addEventListener('pagehide', releaseActivePressButtons);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) releaseActivePressButtons();
+    });
+
+    fetch('/config', { cache: 'no-store' })
+      .then((response) => {
+        if (!response.ok) throw new Error('Failed to load output configuration');
+        return response.json();
+      })
+      .then((config) => {
+        joyModeEnabled = config.output_type === 'joy';
+        if (joyModeEnabled) {
+          const configuredTypes = config.joy_button_types;
+          const validTypes = Array.isArray(configuredTypes)
+            && configuredTypes.length === joyButtonElements.length
+            && configuredTypes.every((type) => type === 'press' || type === 'toggle');
+          if (!validTypes) throw new Error('Invalid Joy button configuration');
+
+          joyButtonTypes = configuredTypes;
+          joyButtonElements.forEach((button, index) => {
+            const buttonType = joyButtonTypes[index];
+            button.dataset.buttonType = buttonType;
+            button.title = `Button ${index} (${buttonType})`;
+            button.setAttribute('aria-label', `Button ${index}, ${buttonType}`);
+          });
+        }
+        joyButtonGrid.hidden = !joyModeEnabled;
+        document.body.classList.toggle('joy-output', joyModeEnabled);
+        if (joyModeEnabled) sendLatestTeleop();
+      })
+      .catch(() => {
+        joyModeEnabled = false;
+        joyButtonGrid.hidden = true;
+      });
   </script>
 </body>
 </html>
