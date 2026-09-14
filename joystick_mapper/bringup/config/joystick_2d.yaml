@@ -51,7 +51,7 @@ joystick_mapper:
             index: 0
             scale: -1.0
       b3:
-        angular_output_frame_id: "hybrid_frame"
+        angular_output_frame_id: "effector_frame"
         axes:
           linear_x:
             index: -1
