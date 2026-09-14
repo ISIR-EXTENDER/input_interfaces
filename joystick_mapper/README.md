@@ -21,6 +21,7 @@ By default, the node publishes:
 | --- | --- | --- |
 | `/joystick_cartesian_command` | `geometry_msgs/msg/TwistStamped` | Cartesian command generated from joystick axes. |
 | `/mode_request` | `std_msgs/msg/String` | Structured mode requests from joystick buttons. |
+| `/gripper_controller/commands` | `std_msgs/msg/Float64MultiArray` | One-element gripper position command. |
 
 Each local mode can declare its own `angular_output_frame_id` for the angular component. The mapper publishes the current mode's angular frame in `TwistStamped.header.frame_id`, while the linear motion remains aligned to the base frame convention for compatibility with the command interface. If a mode does not specify one, it falls back to `base_link` (Available options : `["base_link", "effector_frame", "hybrid_frame"`).
 
@@ -58,6 +59,7 @@ Button parameters use joystick button indexes:
 | `jaco_button_index` | `geometric/jaco` / `geometric/both` | `/mode_request` |
 | `snake_button_index` | `geometric/snake` / `geometric/both` | `/mode_request` |
 | `home_button_index` | `behaviour/joint_target/home` | `/mode_request` |
+| `gripper_button_index` | `gripper_close_position` / `gripper_open_position` | `gripper_command_topic` |
 
 Each button has a mode parameter:
 
@@ -79,6 +81,12 @@ The home button defaults to `trigger`, so it sends
 `hold`, releasing the button publishes `behaviour/passthrough`. If it is
 `toggle`, the first press publishes `behaviour/joint_target/home` and the second
 press publishes `behaviour/passthrough`.
+
+The gripper button defaults to `toggle`: each press alternates between publishing
+`gripper_close_position` and `gripper_open_position` as a one-element
+`std_msgs/msg/Float64MultiArray` on `gripper_command_topic`. If
+`gripper_button_mode` is `hold`, pressing publishes the close position and
+releasing publishes the open position.
 
 ## Local Modes
 
@@ -162,3 +170,8 @@ ros2 topic echo /joystick_cartesian_command
 | `snake_button_mode` | string | `toggle` | Activation mode for the snake geometric button. |
 | `home_button_index` | int | `-1` | Button for the `home` joint target behaviour. |
 | `home_button_mode` | string | `trigger` | Activation mode for the home command button. |
+| `gripper_button_index` | int | `-1` | Button that toggles gripper close/open commands. |
+| `gripper_button_mode` | string | `toggle` | Activation mode for the gripper command button. |
+| `gripper_command_topic` | string | `/gripper_controller/commands` | Forward command controller topic for gripper positions. |
+| `gripper_open_position` | double | `0.2` | Position sent when opening the gripper. |
+| `gripper_close_position` | double | `1.1` | Position sent when closing the gripper. |
