@@ -56,4 +56,9 @@ joystick_mapper:
     snake_button_mode: hold
     home_button_index: 4
     home_button_mode: hold
+    gripper_button_index: 0
+    gripper_button_mode: toggle
+    gripper_command_topic: "/gripper_controller/commands"
+    gripper_open_position: 0.2
+    gripper_close_position: 1.1
     debug: false

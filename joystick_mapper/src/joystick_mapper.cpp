@@ -92,6 +92,8 @@ namespace joystick_mapper
 
     twist_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>(output_topic_, 10);
     mode_request_pub_ = create_publisher<std_msgs::msg::String>(mode_request_topic_, 10);
+    gripper_command_pub_ =
+        create_publisher<std_msgs::msg::Float64MultiArray>(gripper_command_topic_, 10);
   }
 
   void JoystickMapper::readParameters()
@@ -99,8 +101,12 @@ namespace joystick_mapper
     joy_topic_ = declare_parameter<std::string>("joy_topic", "/joy");
     output_topic_ = declare_parameter<std::string>("output_topic", "/joystick_cartesian_command");
     mode_request_topic_ = declare_parameter<std::string>("mode_request_topic", "/mode_request");
+    gripper_command_topic_ =
+        declare_parameter<std::string>("gripper_command_topic", "/gripper_controller/commands");
 
     deadzone_ = declare_parameter<double>("deadzone", 0.2);
+    gripper_open_position_ = declare_parameter<double>("gripper_open_position", 0.2);
+    gripper_close_position_ = declare_parameter<double>("gripper_close_position", 1.1);
     const AxisMap disabled_axes{{-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}};
 
     debug_ = declare_parameter<bool>("debug", false);
@@ -138,12 +144,25 @@ namespace joystick_mapper
     jaco_button_ = declareButton("jaco_button_index", -1, ButtonActivationMode::TOGGLE);
     snake_button_ = declareButton("snake_button_index", -1, ButtonActivationMode::TOGGLE);
     home_button_ = declareButton("home_button_index", -1, ButtonActivationMode::TRIGGER);
+    gripper_button_ = declareButton("gripper_button_index", -1, ButtonActivationMode::TOGGLE);
     warnOnDuplicateButtonIndexes();
 
     if (deadzone_ < 0.0 || deadzone_ >= 1.0)
     {
       RCLCPP_WARN(get_logger(), "Invalid deadzone %.3f, using 0.2", deadzone_);
       deadzone_ = 0.2;
+    }
+
+    if (!std::isfinite(gripper_open_position_))
+    {
+      RCLCPP_WARN(get_logger(), "Invalid gripper_open_position, using 0.2");
+      gripper_open_position_ = 0.2;
+    }
+
+    if (!std::isfinite(gripper_close_position_))
+    {
+      RCLCPP_WARN(get_logger(), "Invalid gripper_close_position, using 1.1");
+      gripper_close_position_ = 1.1;
     }
   }
 
@@ -242,6 +261,7 @@ namespace joystick_mapper
         {"jaco_button_index", jaco_button_.button_index},
         {"snake_button_index", snake_button_.button_index},
         {"home_button_index", home_button_.button_index},
+        {"gripper_button_index", gripper_button_.button_index},
     };
 
     for (std::size_t i = 0; i < buttons.size(); ++i)
@@ -311,6 +331,7 @@ namespace joystick_mapper
     handleStateButton(msg, snake_button_, current_geometric_state_, kGeometricSnake,
                       kGeometricBoth, kGeometricScope);
     handleCommandButton(msg, home_button_, kHomeRequest, kPassthroughRequest);
+    handleGripperButton(msg);
   }
 
   void JoystickMapper::handleLocalModeButton(const sensor_msgs::msg::Joy &msg)
@@ -425,6 +446,40 @@ namespace joystick_mapper
       }
     }
     button.previous_button_pressed = pressed;
+  }
+
+  void JoystickMapper::handleGripperButton(const sensor_msgs::msg::Joy &msg)
+  {
+    const bool pressed = isButtonPressed(msg, gripper_button_.button_index);
+
+    if (gripper_button_.activation_mode == ButtonActivationMode::HOLD)
+    {
+      if (pressed && !gripper_button_.previous_button_pressed)
+      {
+        gripper_button_.active = true;
+        publishGripperCommand(true);
+      }
+      else if (!pressed && gripper_button_.previous_button_pressed)
+      {
+        gripper_button_.active = false;
+        publishGripperCommand(false);
+      }
+    }
+    else if (pressed && !gripper_button_.previous_button_pressed)
+    {
+      gripper_button_.active = !gripper_button_.active;
+      publishGripperCommand(gripper_button_.active);
+    }
+
+    gripper_button_.previous_button_pressed = pressed;
+  }
+
+  void JoystickMapper::publishGripperCommand(bool close)
+  {
+    std_msgs::msg::Float64MultiArray msg;
+    const double position = close ? gripper_close_position_ : gripper_open_position_;
+    msg.data.push_back(position);
+    gripper_command_pub_->publish(msg);
   }
 
   void JoystickMapper::publishModeRequest(const std::string &request)
