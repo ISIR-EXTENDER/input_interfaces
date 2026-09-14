@@ -19,7 +19,7 @@
 #include "extender_msgs/msg/shared_control_goal_array.hpp"
 
 // for YAML
-#include <cv_bridge/cv_bridge.h>
+#include <cv_bridge/cv_bridge.hpp>
 #include <opencv2/opencv.hpp>
 #include <fstream>
 
