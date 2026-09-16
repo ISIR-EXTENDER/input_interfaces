@@ -73,8 +73,8 @@ PARAMETER_DEFAULTS = {
     "command_backend": COMMAND_BACKEND_CARTESIAN_MANAGER,
     "cartesian_command_topic": "/joystick_cartesian_command",
     "mode_request_topic": "/mode_request",
-    # cartesian_manager does no TF conversion. This must match its
-    # default_input_frame_id, or every command is dropped with a warning.
+    # Must be empty or match a cartesian_manager command frame (base,
+    # end-effector, or hybrid). Linear velocity keeps the base-frame convention.
     "command_frame_id": "base_link",
     "teleop_cmd_topic": "/teleop_cmd",
     "publish_rate_hz": 30.0,

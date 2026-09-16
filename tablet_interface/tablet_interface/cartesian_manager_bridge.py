@@ -6,10 +6,13 @@
   default ``/joystick_cartesian_command``;
 - ``std_msgs/msg/String`` mode requests on ``/mode_request``.
 
-The frame matters. ``cartesian_manager`` performs no TF conversion: a command
-whose ``header.frame_id`` is neither empty nor the configured
-``default_input_frame_id`` is dropped, and the robot silently stops. This bridge
-therefore stamps every command with a configured frame and logs it at startup.
+The frame matters. ``cartesian_manager`` accepts its configured base,
+end-effector, and hybrid command frames; an empty ``header.frame_id`` selects
+its configured default. Linear velocity follows the manager's base-frame
+convention, while angular velocity stamped in the end-effector or hybrid frame
+is rotated into base from live robot context. Unknown frames are ignored. This
+bridge therefore stamps every command with a configured frame and logs it at
+startup.
 """
 
 from __future__ import annotations

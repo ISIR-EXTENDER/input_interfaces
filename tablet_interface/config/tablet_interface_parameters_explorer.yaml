@@ -5,8 +5,8 @@ tablet_interface_node:
     command_backend: "cartesian_manager"
     cartesian_command_topic: "/joystick_cartesian_command"
     mode_request_topic: "/mode_request"
-    # Must match cartesian_manager default_input_frame_id. cartesian_manager does
-    # no TF conversion and drops commands stamped with any other frame.
+    # Empty uses the manager default; otherwise use its configured base,
+    # end-effector, or hybrid command frame.
     command_frame_id: "base_link"
     # Only used when command_backend is "teleop_command".
     teleop_cmd_topic: "/teleop_cmd"

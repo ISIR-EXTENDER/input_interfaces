@@ -254,11 +254,12 @@ The output depends on the `command_backend` parameter.
 Only the publisher for the selected backend is created, so a dead `/teleop_cmd`
 publisher never appears on the graph while running against the manager.
 
-> **Frames matter.** `cartesian_manager` performs no TF conversion. A command
-> whose `header.frame_id` is neither empty nor its `default_input_frame_id` is
-> dropped, and the robot simply stops with a warning in the manager log. Keep
-> `command_frame_id` equal to the manager's `default_input_frame_id`
-> (`base_link` in the Explorer bringup).
+> **Frames matter.** `cartesian_manager` accepts its configured base,
+> end-effector, and hybrid command frame IDs; an empty `header.frame_id` uses
+> `default_input_frame_id`. Linear velocity follows the base-frame convention.
+> Angular velocity stamped in the end-effector or hybrid frame is rotated into
+> base from live robot context. Commands with unknown frame IDs are ignored.
+> `base_link` remains the conservative Explorer default.
 
 The frontend widget `topic` fields such as `/cmd/joystick` or `/cmd/mode` are
 UI configuration metadata. They do not change the backend teleop output topic.
@@ -378,7 +379,7 @@ Important parameters:
 | `command_backend` | `cartesian_manager` | `cartesian_manager` or `teleop_command`. |
 | `cartesian_command_topic` | `/joystick_cartesian_command` | Cartesian command topic for `cartesian_manager`. |
 | `mode_request_topic` | `/mode_request` | Structured mode request topic. |
-| `command_frame_id` | `base_link` | Frame stamped on outgoing commands. Must match the manager. |
+| `command_frame_id` | `base_link` | Frame stamped on outgoing commands. Use empty for the manager default, or one of its configured base, end-effector, or hybrid frame IDs. |
 | `teleop_cmd_topic` | `/teleop_cmd` | Legacy output topic, only used by the `teleop_command` backend. |
 | `publish_rate_hz` | `30.0` in code, profile-specific in YAML | Teleop publish timer rate. |
 | `linear_scale` | `0.2` in code, profile-specific in YAML | Linear command scaling. |

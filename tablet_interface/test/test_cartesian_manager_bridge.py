@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from builtin_interfaces.msg import Time
 from geometry_msgs.msg import Twist
 
@@ -77,8 +79,7 @@ def test_publish_command_stamps_configured_frame() -> None:
 
     assert len(command_publisher.messages) == 1
     msg = command_publisher.messages[0]
-    # A mismatched frame makes cartesian_manager drop the command silently,
-    # so the stamped frame is the single most important field here.
+    # The manager interprets every axis according to the stamped command frame.
     assert msg.header.frame_id == "base_link"
     assert msg.header.stamp.sec == 7
     assert msg.twist.linear.x == 0.1
@@ -87,6 +88,19 @@ def test_publish_command_stamps_configured_frame() -> None:
     assert msg.twist.angular.x == 0.4
     assert msg.twist.angular.y == -0.5
     assert msg.twist.angular.z == 0.6
+
+
+@pytest.mark.parametrize("command_frame_id", ["effector_frame", "hybrid_frame"])
+def test_publish_command_preserves_supported_manager_frame(
+    command_frame_id: str,
+) -> None:
+    bridge, command_publisher, _mode, _logger, _state = create_bridge(
+        command_frame_id=command_frame_id
+    )
+
+    bridge.publish_command(make_twist())
+
+    assert command_publisher.messages[0].header.frame_id == command_frame_id
 
 
 def test_publish_command_supports_empty_frame() -> None:
