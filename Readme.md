@@ -38,6 +38,14 @@ here; put new joystick behavior in `joystick_mapper` instead.
 
 See [`joystick_interface/Readme.md`](joystick_interface/Readme.md).
 
+### `keyboard_interface`
+
+Configurable keyboard input that publishes each mapped key state to a dedicated
+`std_msgs/msg/Bool` topic. Presses publish `true`, releases publish `false`, and
+keyboard auto-repeat events are suppressed.
+
+See [`keyboard_interface/README.md`](keyboard_interface/README.md).
+
 ### `tablet_interface`
 
 Websocket backend used by `extender_ui`.
