@@ -1,0 +1,13 @@
+# The Kinova gen3's integrated camera, served by kortex_vision.
+#
+# It already publishes on /camera/color, so the normal case is driver:=none: the camera comes up
+# with the arm and this package has nothing to remap. Use driver:=kortex_vision only when the
+# camera is started on its own.
+#
+# Known gap: the camera frame is not in the arm's URDF, so nothing can place the image in the
+# robot's TF tree until it is added.
+camera:
+  ros__parameters:
+    camera_name: camera_kinova
+    frame_id: camera_color_frame
+    camera_info_url: ""
