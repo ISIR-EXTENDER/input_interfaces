@@ -28,6 +28,8 @@ def launch_module():
 def test_every_driver_lands_on_the_same_two_topics(launch_module):
     # The whole point of the package: a consumer names one topic and any camera can fill it.
     for driver in launch_module.DRIVERS:
+        if launch_module.DRIVERS[driver].get("launch_file"):
+            continue  # It is included with a namespace argument, not remapped.
         remappings = dict(launch_module.normalized_remappings(driver))
         assert set(remappings.values()) == {
             "/camera/color/image_raw",
@@ -51,15 +53,17 @@ def test_a_trailing_slash_does_not_double_up(launch_module):
     assert "/gripper/color/image_raw" in remappings.values()
 
 
-def test_kortex_vision_needs_no_move(launch_module):
-    # It already publishes the convention, so its remaps are identities. If that stops being
-    # true upstream, this fails here rather than silently relocating the Kinova camera.
-    remappings = dict(launch_module.normalized_remappings("kortex_vision"))
+def test_kinova_vision_is_asked_for_the_right_namespace(launch_module):
+    # It takes the parent and appends `color/` itself, so /camera/color means passing it `camera`.
+    assert launch_module.kinova_namespace_argument("/camera/color") == "camera"
+    assert launch_module.kinova_namespace_argument("/gripper/color") == "gripper"
 
-    assert remappings == {
-        "/camera/color/image_raw": "/camera/color/image_raw",
-        "/camera/color/camera_info": "/camera/color/camera_info",
-    }
+
+def test_a_namespace_kinova_vision_cannot_serve_is_refused_out_loud(launch_module):
+    # Its own remappings fix the `color/` segment, so silently publishing somewhere else would be
+    # worse than saying no.
+    with pytest.raises(RuntimeError, match="color"):
+        launch_module.kinova_namespace_argument("/gripper/rgb")
 
 
 def test_apriltag_is_remapped_rather_than_edited(launch_module):
@@ -80,10 +84,10 @@ def test_the_driver_choices_match_what_the_file_can_actually_start(launch_module
     assert set(choices) == {*launch_module.DRIVERS.keys(), "none"}
 
 
-def test_every_driver_names_a_component_or_an_executable(launch_module):
+def test_every_driver_names_a_package_and_a_way_to_start_it(launch_module):
     for driver, spec in launch_module.DRIVERS.items():
-        assert spec["executable"], driver
         assert spec["package"], driver
+        assert spec.get("executable") or spec.get("launch_file"), driver
 
 
 def context_with(**values):
@@ -113,11 +117,12 @@ def test_a_driver_on_its_own_gets_a_container_so_a_detector_can_join_it(launch_m
     assert type(node).__name__ == "ComposableNodeContainer"
 
 
-def test_a_driver_with_no_component_falls_back_to_a_plain_node(launch_module):
-    # kortex_vision registers no rclcpp component, so composing it is not an option.
-    [node] = launch_module._camera_nodes(context_with(driver="kortex_vision"))
+def test_kinova_vision_is_included_rather_than_rebuilt(launch_module):
+    # Its own launch brings up colour, depth, the RTSP configuration and two static transforms.
+    # Spawning the node here instead would go stale the first time any of that changes.
+    [action] = launch_module._camera_nodes(context_with(driver="kinova_vision"))
 
-    assert type(node).__name__ == "Node"
+    assert type(action).__name__ == "IncludeLaunchDescription"
 
 
 def test_joining_an_existing_container_loads_into_it_instead(launch_module):

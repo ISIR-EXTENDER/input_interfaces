@@ -1,13 +1,14 @@
-# The Kinova gen3's integrated camera, served by kortex_vision.
+# The Kinova gen3's integrated camera, served by the kinova_vision package.
 #
-# It already publishes on /camera/color, so the normal case is driver:=none: the camera comes up
-# with the arm and this package has nothing to remap. Use driver:=kortex_vision only when the
-# camera is started on its own.
+# It needs no parameters from here. Its own launch file owns the RTSP stream configuration, the
+# colour and depth nodes, and the calibration defaults, so camera_interface includes that launch
+# rather than respawning the node:
 #
-# Known gap: the camera frame is not in the arm's URDF, so nothing can place the image in the
-# robot's TF tree until it is added.
-camera:
-  ros__parameters:
-    camera_name: camera_kinova
-    frame_id: camera_color_frame
-    camera_info_url: ""
+#   ros2 launch camera_interface camera.launch.py driver:=kinova_vision
+#
+# It already publishes /camera/color/image_raw, /camera/color/camera_info and
+# /camera/color/image_raw/compressed, so nothing is remapped. driver:=none is equivalent when the
+# camera was started by hand.
+#
+# The TF caveat is in the Readme: enabling `vision` on the description and running this launch
+# both claim camera_color_frame, and the gen3.xacro the manager uses leaves vision off.

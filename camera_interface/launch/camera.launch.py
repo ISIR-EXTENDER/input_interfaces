@@ -15,10 +15,12 @@ with a Kinova arm.
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, OpaqueFunction
-from launch.substitutions import LaunchConfiguration
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes, Node
 from launch_ros.descriptions import ComposableNode
+from launch_ros.substitutions import FindPackageShare
 
 #: What every consumer in this workspace is pointed at. `color` leaves room for a depth stream
 #: beside it without renaming anything that already works.
@@ -45,15 +47,14 @@ DRIVERS = {
         "image": "~/image_raw",
         "camera_info": "~/camera_info",
     },
-    "kortex_vision": {
-        "package": "kortex_vision",
-        "plugin": "",
-        "executable": "vision_node",
-        "node_name": "camera",
-        # Already the convention, so these remaps are identities. Kept explicit so a change
-        # upstream shows up here rather than silently moving the topics.
-        "image": "/camera/color/image_raw",
-        "camera_info": "/camera/color/camera_info",
+    # Included rather than spawned: its own launch brings up colour and depth, the RTSP stream
+    # configuration and two static transforms, and duplicating that here would go stale.
+    "kinova_vision": {
+        "package": "kinova_vision",
+        "launch_file": "kinova_vision.launch.py",
+        # It publishes `<camera>/color/image_raw` and friends, which is already the convention.
+        "image": "color/image_raw",
+        "camera_info": "color/camera_info",
     },
 }
 
@@ -107,7 +108,7 @@ def _camera_nodes(context, *_args, **_kwargs):
     republish = LaunchConfiguration("republish_compressed").perform(context).lower() in ("true", "1")
 
     composable: list[ComposableNode] = []
-    plain: list[Node] = []
+    plain: list = []
     if driver != "none":
         node = _driver_description(driver, namespace, params_file)
         (composable if isinstance(node, ComposableNode) else plain).append(node)
@@ -133,6 +134,15 @@ def _camera_nodes(context, *_args, **_kwargs):
 
 def _driver_description(driver: str, namespace: str, params_file: str):
     spec = DRIVERS[driver]
+
+    if spec.get("launch_file"):
+        return IncludeLaunchDescription(
+            PythonLaunchDescriptionSource(
+                PathJoinSubstitution([FindPackageShare(spec["package"]), "launch", spec["launch_file"]])
+            ),
+            launch_arguments={"camera": kinova_namespace_argument(namespace)}.items(),
+        )
+
     parameters = [params_file] if params_file else []
     remappings = normalized_remappings(driver, namespace)
 
@@ -164,6 +174,21 @@ def normalized_remappings(driver: str, namespace: str = DEFAULT_NAMESPACE) -> li
         (spec["image"], f"{namespace}/image_raw"),
         (spec["camera_info"], f"{namespace}/camera_info"),
     ]
+
+
+def kinova_namespace_argument(namespace: str = DEFAULT_NAMESPACE) -> str:
+    """`kinova_vision` takes the parent namespace and appends `color/` itself.
+
+    So `/camera/color` means passing it `camera`. A namespace that does not end in `/color` cannot
+    be honoured, because the `color/` segment is fixed in its own remappings.
+    """
+    namespace = namespace.rstrip("/")
+    if not namespace.endswith("/color"):
+        raise RuntimeError(
+            f"kinova_vision publishes under '<camera>/color', so it cannot serve '{namespace}'. "
+            "Use a namespace ending in /color, or driver:=none and its own launch file."
+        )
+    return namespace[: -len("/color")].lstrip("/")
 
 
 def apriltag_remappings(namespace: str = DEFAULT_NAMESPACE) -> list[tuple[str, str]]:
