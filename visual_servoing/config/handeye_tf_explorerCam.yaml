@@ -1,0 +1,18 @@
+%YAML:1.0
+---
+# Explorer: camera on the gripper, expressed in the manager's end-effector frame.
+# The translation and rotation below are a PLACEHOLDER (camera at the effector origin,
+# looking along it). Run a hand-eye calibration on the bench and replace them before
+# servoing a real arm; the Kinova file next to this one shows measured values.
+ee_frame: effector_frame
+camera_frame: camera_link
+base_frame: base_link
+
+tx: 0.0
+ty: 0.0
+tz: 0.0
+
+qx: 0.0
+qy: 0.0
+qz: 0.0
+qw: 1.0

@@ -173,7 +173,7 @@ void VisualServoing::readYamlApriltags(double tag_id_to_follow)                 
     geometry_msgs::msg::TransformStamped t;
 
     t.header.stamp = this->get_clock()->now();
-    t.header.frame_id = "camera_link";
+    t.header.frame_id = camera_frame;
     t.child_frame_id = "saved_tag";
 
     t.transform.translation.x = apriltagSave.position[0];
@@ -241,6 +241,11 @@ void VisualServoing::readYamlTransformEEtoCAM()                                 
     double tx, ty, tz;
     double qw, qx, qy, qz;
     
+    // Optional in older files, which described the Kinova gen3 and so keep its names.
+    if (!fs["ee_frame"].empty()) fs["ee_frame"] >> ee_frame;
+    if (!fs["camera_frame"].empty()) fs["camera_frame"] >> camera_frame;
+    if (!fs["base_frame"].empty()) fs["base_frame"] >> base_frame;
+
     fs["tx"] >> tx;
     fs["ty"] >> ty;
     fs["tz"] >> tz;
@@ -259,8 +264,8 @@ void VisualServoing::readYamlTransformEEtoCAM()                                 
     geometry_msgs::msg::TransformStamped t;
 
     t.header.stamp = this->get_clock()->now();
-    t.header.frame_id = "end_effector_link";
-    t.child_frame_id = "camera_link";
+    t.header.frame_id = ee_frame;
+    t.child_frame_id = camera_frame;
 
     t.transform.translation.x = tx;
     t.transform.translation.y = ty;
@@ -391,7 +396,7 @@ void VisualServoing::timer_callback(){
         CAMtoTAG.orientation = r_CAMtoTAG.toRotationMatrix();
         
         // param #5 - transformation of robot Base's frame to EE's frame currently read                             // OK
-        auto temp_BtoEE = tf_buffer_->lookupTransform("base_link", "end_effector_link",tf2::TimePointZero);
+        auto temp_BtoEE = tf_buffer_->lookupTransform(base_frame, ee_frame, tf2::TimePointZero);
         Eigen::Vector3d t_BtoEE;
         t_BtoEE <<  temp_BtoEE.transform.translation.x,
                     temp_BtoEE.transform.translation.y,

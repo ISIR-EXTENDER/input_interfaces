@@ -118,6 +118,10 @@ private:
   // read saving apriltags position in Yaml
   std::string yaml_path;
   std::string yaml_path_transform_EEtoCAM;
+  // Frame names come from the hand-eye file, so one node serves any arm whose camera was calibrated.
+  std::string base_frame = "base_link";
+  std::string ee_frame = "end_effector_link";
+  std::string camera_frame = "camera_link";
   ApriltagSave apriltagSave;
   ApriltagSave apriltag;
 
