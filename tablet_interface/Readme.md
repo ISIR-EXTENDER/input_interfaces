@@ -1,16 +1,24 @@
 # Tablet Interface
 
-`tablet_interface` is the ROS 2 websocket backend used by
-[`extender_ui`](https://github.com/ISIR-EXTENDER/extender_ui). It receives
-generic UI messages from the tablet, validates them, republishes them to ROS 2,
-and streams robot state, topic snapshots, and backend events back to the UI.
+> [!IMPORTANT]
+> **`tablet_interface` is legacy and is no longer maintained.** Its last
+> supported release is tagged `tablet_interface/v1.0.0`, together with the app
+> it served, [`extender_ui`](https://github.com/ISIR-EXTENDER/extender_ui), at
+> `v1.0.0`.
+>
+> The operator interface for the ISIR Extender stack is now
+> **[Bloom](https://github.com/ISIR-EXTENDER/bloom)**, which reaches
+> [`cartesian_manager`](https://github.com/ISIR-EXTENDER/cartesian_manager)
+> through its own FastAPI backend and ROS adapters and needs neither package.
+>
+> The other packages in this repository are current: `joystick_mapper`,
+> `visual_servoing` and `camera_interface`. Only this one is retired, which is
+> why the tag is prefixed.
 
-The current production-style frontend app for new work is **Sandbox V0.0**.
-It now drives the robot through
-[`cartesian_manager`](https://github.com/ISIR-EXTENDER/cartesian_manager), which
-routes Cartesian commands to `qontrol_controller`. Petanque support and the
-legacy `sandbox_controller` path are preserved for compatibility, but new
-controller/UI development should target the manager stack.
+`tablet_interface` was the ROS 2 websocket backend used by `extender_ui`. It
+received generic UI messages from the tablet, validated them, republished them
+to ROS 2, and streamed robot state, topic snapshots and backend events back to
+the UI.
 
 <p align="center">
   <img alt="ROS 2" src="https://img.shields.io/badge/ROS%202-Humble-22314e?style=for-the-badge" />
