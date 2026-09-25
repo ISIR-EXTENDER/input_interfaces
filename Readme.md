@@ -8,6 +8,19 @@ and structured mode requests over robot-specific teleoperation messages.
 
 ## Packages
 
+### `camera_interface`
+
+One camera bring-up for every robot.
+
+`camera_interface` starts `usb_cam`, `camera_ros` or `kinova_vision` and
+publishes, whatever the driver:
+
+- `sensor_msgs/msg/Image` on `/camera/color/image_raw`,
+- `sensor_msgs/msg/CompressedImage` on `/camera/color/image_raw/compressed`,
+- `sensor_msgs/msg/CameraInfo` on `/camera/color/camera_info`.
+
+See [`camera_interface/Readme.md`](camera_interface/Readme.md).
+
 ### `joystick_mapper`
 
 Recommended joystick and 3D mouse mapper for Cartesian control.
