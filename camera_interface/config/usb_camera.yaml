@@ -1,0 +1,11 @@
+# Any USB webcam, for a bench test or a laptop. The default device is the first one.
+camera:
+  ros__parameters:
+    camera_name: camera
+    video_device: /dev/video0
+    frame_id: camera
+    pixel_format: mjpeg2rgb
+    image_width: 640
+    image_height: 480
+    framerate: 30.0
+    camera_info_url: ""

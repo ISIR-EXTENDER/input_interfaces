@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>camera_interface</name>
+  <version>0.0.0</version>
+  <description>One camera bring-up and one set of topic names, whichever camera the robot has.</description>
+  <maintainer email="guerrysanchez@isir.upmc.fr">Susana Guerry Sanchez</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>ament_python</buildtool_depend>
+
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <exec_depend>image_transport</exec_depend>
+  <exec_depend>compressed_image_transport</exec_depend>
+  <exec_depend>rclcpp_components</exec_depend>
+  <!-- Drivers are picked at launch; none is required by the others. -->
+  <exec_depend condition="$CAMERA_INTERFACE_USB_CAM != 0">usb_cam</exec_depend>
+  <exec_depend condition="$CAMERA_INTERFACE_CAMERA_ROS != 0">camera_ros</exec_depend>
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

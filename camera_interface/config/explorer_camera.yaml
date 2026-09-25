@@ -1,0 +1,14 @@
+# Explorer's USB camera, as apriltag_detector already drives it today.
+# Launch with: driver:=usb_cam params_file:=<this file>
+camera:
+  ros__parameters:
+    camera_name: camera_explorer
+    video_device: /dev/video2
+    frame_id: camera_explorer
+    pixel_format: mjpeg2rgb
+    image_width: 640
+    image_height: 480
+    framerate: 30.0
+    # Calibration belongs to the camera, not to the robot. apriltag_detector carries the
+    # measured one; point this at a copy rather than guessing intrinsics.
+    camera_info_url: ""
