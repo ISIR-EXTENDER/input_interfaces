@@ -1,18 +1,4 @@
-"""Bring up a camera, whichever one it is, on one set of topic names.
-
-Every consumer in this workspace wants the same three things: an image, its
-calibration, and a compressed image small enough to send somewhere. What they
-get today depends on the camera: `kortex_vision` publishes under
-`/camera/color`, `usb_cam` publishes relative `image_raw`, and `camera_ros`
-publishes under its own node name. So each consumer learned one camera, and
-changing camera meant changing the consumer.
-
-This launch file is the seam. Pick a driver, and the topics come out at
-`<namespace>/image_raw`, `<namespace>/camera_info` and
-`<namespace>/image_raw/compressed` whatever the driver was. `driver:=none`
-covers the camera somebody else already started, such as the one that comes up
-with a Kinova arm.
-"""
+"""Bring up any camera on one set of topic names: <namespace>/image_raw, camera_info and image_raw/compressed."""
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
@@ -22,19 +8,15 @@ from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes, Nod
 from launch_ros.descriptions import ComposableNode
 from launch_ros.substitutions import FindPackageShare
 
-#: What every consumer in this workspace is pointed at. `color` leaves room for a depth stream
-#: beside it without renaming anything that already works.
 DEFAULT_NAMESPACE = "/camera/color"
 
-#: Each driver's own names, which this file remaps onto the convention. The key is the `driver`
-#: argument; `none` is a camera somebody else started.
+# Each driver's own topic names, remapped onto the convention.
 DRIVERS = {
     "usb_cam": {
         "package": "usb_cam",
         "plugin": "usb_cam::UsbCamNode",
         "executable": "usb_cam_node_exe",
         "node_name": "camera",
-        # Relative, so the remap is direct.
         "image": "image_raw",
         "camera_info": "camera_info",
     },
@@ -43,16 +25,13 @@ DRIVERS = {
         "plugin": "camera::CameraNode",
         "executable": "camera_node",
         "node_name": "camera",
-        # Node-relative: `~/image_raw` resolves to `/camera/image_raw` under this node name.
         "image": "~/image_raw",
         "camera_info": "~/camera_info",
     },
-    # Included rather than spawned: its own launch brings up colour and depth, the RTSP stream
-    # configuration and two static transforms, and duplicating that here would go stale.
+    # Included rather than spawned: its launch also owns the RTSP config, depth and static transforms.
     "kinova_vision": {
         "package": "kinova_vision",
         "launch_file": "kinova_vision.launch.py",
-        # It publishes `<camera>/color/image_raw` and friends, which is already the convention.
         "image": "color/image_raw",
         "camera_info": "color/camera_info",
     },
@@ -116,8 +95,6 @@ def _camera_nodes(context, *_args, **_kwargs):
         plain.append(_republisher(namespace))
 
     if not composable and not plain:
-        # `driver:=none` with no republisher is a legitimate, and silent, no-op: the camera is
-        # already publishing on the convention and this file has nothing left to do.
         return []
 
     if container_name:
@@ -127,8 +104,7 @@ def _camera_nodes(context, *_args, **_kwargs):
             *plain,
             LoadComposableNodes(composable_node_descriptions=composable, target_container=container_name),
         ]
-    # A container even when we start it ourselves, so a detector can join by name later and read
-    # frames without a copy. That is what apriltag_detector's own launch file does today.
+    # Our own container, so a detector can join it and read frames without a copy.
     return [*plain, *_own_container(composable)]
 
 
@@ -155,7 +131,6 @@ def _driver_description(driver: str, namespace: str, params_file: str):
             remappings=remappings,
             extra_arguments=[{"use_intra_process_comms": True}],
         )
-    # No registered component, so it runs on its own and its frames are copied to whoever reads them.
     return Node(
         package=spec["package"],
         executable=spec["executable"],
@@ -179,11 +154,7 @@ def normalized_remappings(driver: str, namespace: str = DEFAULT_NAMESPACE) -> li
 
 
 def kinova_namespace_argument(namespace: str = DEFAULT_NAMESPACE) -> str:
-    """`kinova_vision` takes the parent namespace and appends `color/` itself.
-
-    So `/camera/color` means passing it `camera`. A namespace that does not end in `/color` cannot
-    be honoured, because the `color/` segment is fixed in its own remappings.
-    """
+    """`kinova_vision` appends `color/` itself, so `/camera/color` means passing it `camera`."""
     namespace = namespace.rstrip("/")
     if not namespace.endswith("/color"):
         raise RuntimeError(
@@ -194,12 +165,7 @@ def kinova_namespace_argument(namespace: str = DEFAULT_NAMESPACE) -> str:
 
 
 def apriltag_remappings(namespace: str = DEFAULT_NAMESPACE) -> list[tuple[str, str]]:
-    """What `apriltag_detector` needs to read this camera.
-
-    Its subscriptions name `/image_raw` and `/camera_info` absolutely, in
-    `detector.cpp`, so it cannot follow a namespace on its own. Remapping at
-    launch leaves its code alone.
-    """
+    """`apriltag_detector` subscribes to absolute `/image_raw` and `/camera_info`."""
     namespace = namespace.rstrip("/")
     return [
         ("/image_raw", f"{namespace}/image_raw"),
@@ -208,11 +174,7 @@ def apriltag_remappings(namespace: str = DEFAULT_NAMESPACE) -> list[tuple[str, s
 
 
 def _republisher(namespace: str) -> Node:
-    """Only for a driver that publishes raw without the compressed transport plugin.
-
-    Kept as a plain node rather than a component: `republish` takes its transports as command line
-    arguments, which is the form every example uses and the one least likely to move.
-    """
+    """For a driver that publishes raw without the compressed transport plugin."""
     return Node(
         package="image_transport",
         executable="republish",

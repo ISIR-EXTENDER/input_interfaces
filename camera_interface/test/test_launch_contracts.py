@@ -1,8 +1,4 @@
-"""The promise this package makes: same topic names, whichever camera.
-
-These run without a camera, a driver package or a ROS graph. They read the
-launch description, which is where the promise is actually kept or broken.
-"""
+"""Same topic names whichever camera, checked on the launch description without a camera."""
 
 import importlib.util
 from pathlib import Path
@@ -26,7 +22,6 @@ def launch_module():
 
 
 def test_every_driver_lands_on_the_same_three_topics(launch_module):
-    # The whole point of the package: a consumer names one topic and any camera can fill it.
     for driver in launch_module.DRIVERS:
         if launch_module.DRIVERS[driver].get("launch_file"):
             continue  # It is included with a namespace argument, not remapped.
@@ -56,21 +51,16 @@ def test_a_trailing_slash_does_not_double_up(launch_module):
 
 
 def test_kinova_vision_is_asked_for_the_right_namespace(launch_module):
-    # It takes the parent and appends `color/` itself, so /camera/color means passing it `camera`.
     assert launch_module.kinova_namespace_argument("/camera/color") == "camera"
     assert launch_module.kinova_namespace_argument("/gripper/color") == "gripper"
 
 
 def test_a_namespace_kinova_vision_cannot_serve_is_refused_out_loud(launch_module):
-    # Its own remappings fix the `color/` segment, so silently publishing somewhere else would be
-    # worse than saying no.
     with pytest.raises(RuntimeError, match="color"):
         launch_module.kinova_namespace_argument("/gripper/rgb")
 
 
 def test_apriltag_is_remapped_rather_than_edited(launch_module):
-    # apriltag_detector subscribes to absolute /image_raw and /camera_info in detector.cpp, so it
-    # cannot follow a namespace. Launch-time remapping leaves its source alone.
     assert dict(launch_module.apriltag_remappings()) == {
         "/image_raw": "/camera/color/image_raw",
         "/camera_info": "/camera/color/camera_info",
@@ -109,7 +99,6 @@ def context_with(**values):
 
 
 def test_an_already_running_camera_starts_nothing(launch_module):
-    # driver:=none with nothing to republish is a legitimate no-op, not a misconfiguration.
     assert launch_module._camera_nodes(context_with(driver="none")) == []
 
 
@@ -120,8 +109,6 @@ def test_a_driver_on_its_own_gets_a_container_so_a_detector_can_join_it(launch_m
 
 
 def test_kinova_vision_is_included_rather_than_rebuilt(launch_module):
-    # Its own launch brings up colour, depth, the RTSP configuration and two static transforms.
-    # Spawning the node here instead would go stale the first time any of that changes.
     [action] = launch_module._camera_nodes(context_with(driver="kinova_vision"))
 
     assert type(action).__name__ == "IncludeLaunchDescription"
