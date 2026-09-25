@@ -172,6 +172,8 @@ def normalized_remappings(driver: str, namespace: str = DEFAULT_NAMESPACE) -> li
     namespace = namespace.rstrip("/")
     return [
         (spec["image"], f"{namespace}/image_raw"),
+        # image_transport names its compressed topic from the original name, so it needs its own remap.
+        (f"{spec['image']}/compressed", f"{namespace}/image_raw/compressed"),
         (spec["camera_info"], f"{namespace}/camera_info"),
     ]
 

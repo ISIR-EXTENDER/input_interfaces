@@ -25,7 +25,7 @@ def launch_module():
     return load_launch_module()
 
 
-def test_every_driver_lands_on_the_same_two_topics(launch_module):
+def test_every_driver_lands_on_the_same_three_topics(launch_module):
     # The whole point of the package: a consumer names one topic and any camera can fill it.
     for driver in launch_module.DRIVERS:
         if launch_module.DRIVERS[driver].get("launch_file"):
@@ -33,15 +33,17 @@ def test_every_driver_lands_on_the_same_two_topics(launch_module):
         remappings = dict(launch_module.normalized_remappings(driver))
         assert set(remappings.values()) == {
             "/camera/color/image_raw",
+            "/camera/color/image_raw/compressed",
             "/camera/color/camera_info",
         }, driver
 
 
-def test_a_custom_namespace_moves_both_topics_together(launch_module):
+def test_a_custom_namespace_moves_every_topic_together(launch_module):
     remappings = dict(launch_module.normalized_remappings("usb_cam", "/gripper/color"))
 
     assert set(remappings.values()) == {
         "/gripper/color/image_raw",
+        "/gripper/color/image_raw/compressed",
         "/gripper/color/camera_info",
     }
 
