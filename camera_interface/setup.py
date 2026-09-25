@@ -16,9 +16,9 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="TODO",
-    maintainer_email="user@todo.todo",
+    maintainer="Susana Guerry Sanchez",
+    maintainer_email="guerrysanchez@isir.upmc.fr",
     description="One camera bring-up and one set of topic names, whichever camera the robot has.",
-    license="TODO",
+    license="MIT",
     tests_require=["pytest"],
 )
