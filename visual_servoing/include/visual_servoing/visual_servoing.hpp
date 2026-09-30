@@ -121,4 +121,8 @@ private:
   ApriltagSave apriltagSave;
   ApriltagSave apriltag;
 
+  // get qontrol_controller v_max param
+  double command_max_linear_velocity_;
+  double command_max_angular_velocity_;
+
 };

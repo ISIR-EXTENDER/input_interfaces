@@ -31,6 +31,19 @@ void VisualServoing::getParameters()
     yaml_path = get_parameter("yaml_path").as_string();
     declare_parameter<std::string>("yaml_path_transform_EEtoCAM", "/home/robingibaud/ros2_ws/src/extender_workspace/src/visual_servoing/config/handeye_tf_kinovaCam.yaml");
     yaml_path_transform_EEtoCAM = get_parameter("yaml_path_transform_EEtoCAM").as_string();
+
+    // get qontrol_controller v_max param
+    rclcpp::SyncParametersClient param_client(this, "/qontrol_explorer");
+
+    if (!param_client.wait_for_service(std::chrono::seconds(5))) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to connect to /qontrol_controller parameter service.");
+        return;
+    }
+
+    command_max_linear_velocity_ = param_client.get_parameter<double>("command_max_linear_velocity");
+    command_max_angular_velocity_ = param_client.get_parameter<double>("command_max_angular_velocity");
+    RCLCPP_INFO(this->get_logger(), "command_max_linear_velocity_ : '%lf'", command_max_linear_velocity_);
+    RCLCPP_INFO(this->get_logger(), "command_max_angular_velocity_ : '%lf'", command_max_angular_velocity_);
 }
 
 void VisualServoing::setupPublishers()
@@ -350,6 +363,7 @@ void VisualServoing::timer_callback(){
         //std::cout << "no apriltag -> skip visual servoing computation" << std::endl;
         geometry_msgs::msg::TwistStamped vel_to_pub;
         vel_to_pub.header.stamp = this->now();
+        vel_to_pub.header.frame_id = "base_link";
         vel_to_pub.twist.linear.x = 0.0;
         vel_to_pub.twist.linear.y = 0.0;
         vel_to_pub.twist.linear.z = 0.0;
@@ -440,19 +454,22 @@ void VisualServoing::timer_callback(){
         //omega_of_ee_in_b = omega_of_tagEtag_in_cam;
         
         // Saturation
-        
-        float v_max_max = 0.2;
-        float characteristic_lenght = 0.5;
+        float v_max_max = command_max_linear_velocity_;                                                       // 0.2
+        float characteristic_lenght = command_max_angular_velocity_;                                          // 0.5
         float omega_max_max = v_max_max/characteristic_lenght ;
         sat(velocity_of_ee_in_b, omega_of_ee_in_b, v_max_max,omega_max_max);
         
-
+        // Normalization
+        velocity_of_ee_in_b = velocity_of_ee_in_b / v_max_max;
+        omega_of_ee_in_b = omega_of_ee_in_b / omega_max_max;
+        
         // publication
         //  outputs : 
         //      -> velocity_of_ee_in_b[3]
         //      -> omega_of_ee_in_b[3]
         geometry_msgs::msg::TwistStamped vel_to_pub;
         vel_to_pub.header.stamp = this->now();
+        vel_to_pub.header.frame_id = "base_link";
 
         vel_to_pub.twist.linear.x = velocity_of_ee_in_b[0];
         vel_to_pub.twist.linear.y = velocity_of_ee_in_b[1];
@@ -475,6 +492,8 @@ void VisualServoing::timer_callback(){
         // Débug
         geometry_msgs::msg::TwistStamped error_pub;
         error_pub.header.stamp = this->now();
+        error_pub.header.frame_id = "base_link";
+
         error_pub.twist.linear.x = abs(velocity_of_tagEtag_in_cam[0]/lambda);
         error_pub.twist.linear.y = abs(velocity_of_tagEtag_in_cam[1]/lambda);
         error_pub.twist.linear.z = abs(velocity_of_tagEtag_in_cam[2]/lambda);

@@ -1,5 +1,5 @@
 visual_servoing:
   ros__parameters:
-    lambda: 0.4
+    lambda: 1.0
     #common-config: !include saved_tag_goals.yaml
     
