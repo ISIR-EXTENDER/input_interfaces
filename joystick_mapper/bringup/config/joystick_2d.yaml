@@ -1,7 +1,7 @@
 joystick_mapper:
   ros__parameters:
     joy_topic: "/joy"
-    output_topic: "/joystick_cartesian_command"
+    output_topic: "/physical_joystick_cartesian_command"
     mode_request_topic: "/mode_request"
     deadzone: 0.2
     local_mode_button_index: 1
@@ -63,11 +63,11 @@ joystick_mapper:
             index: -1
             scale: 1.0
           angular_x:
-            index: 0
+            index: 1
             scale: 1.0
           angular_y:
-            index: 1
-            scale: -1.0
+            index: 0
+            scale: 1.0
           angular_z:
             index: -1
             scale: 1.0
