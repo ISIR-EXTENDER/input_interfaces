@@ -40,6 +40,17 @@ Use this package for new joystick integrations, especially with
 
 See [`joystick_mapper/README.md`](joystick_mapper/README.md).
 
+### `mouse_joystick_interface`
+
+Browser-based two-axis joystick for mouse input. It publishes normalized axes
+and twelve configurable press or toggle buttons as `sensor_msgs/msg/Joy` for use
+with `joystick_mapper`, or axes as `extender_msgs/msg/TeleopCommand` for existing
+teleoperation workflows. The supplied configuration publishes Joy messages on
+`/joy`.
+
+See [`mouse_joystick_interface/README.md`](mouse_joystick_interface/README.md)
+for installation and configuration instructions.
+
 ### `joystick_interface`
 
 Legacy ROS teleoperation from joysticks and 3D mice.
