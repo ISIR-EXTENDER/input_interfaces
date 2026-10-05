@@ -4,6 +4,48 @@
 its normalized coordinates as either the existing
 `extender_msgs/msg/TeleopCommand` output or a `sensor_msgs/msg/Joy` message.
 
+## Installation
+
+The commands below assume ROS 2 Jazzy is already installed on Ubuntu and this
+repository is available in `~/extender_workspace/src`. Adjust the workspace path
+to match your checkout. A web browser is required to use the joystick.
+
+1. Install the build and dependency-management tools:
+
+   ```bash
+   sudo apt update
+   sudo apt install python3-colcon-common-extensions python3-rosdep
+   ```
+
+   If rosdep has not been initialized on this machine, run `sudo rosdep init`
+   once before continuing.
+
+2. Load ROS 2 and install the dependencies of the interface and its local
+   message package:
+
+   ```bash
+   source /opt/ros/jazzy/setup.bash
+   cd ~/extender_workspace
+   rosdep update
+   rosdep install --from-paths src/input_interfaces/mouse_joystick_interface src/tools/extender_msgs --ignore-src --rosdistro jazzy -r -y
+   ```
+
+   Keep `src/tools/extender_msgs` in the workspace: the server imports
+   `TeleopCommand` even when configured to publish Joy messages. The HTTP server
+   uses Python's standard library; no additional pip or npm installation is
+   needed.
+
+3. Build the interface together with its workspace dependencies, then load the
+   resulting environment:
+
+   ```bash
+   colcon build --symlink-install --packages-up-to mouse_joystick_interface
+   source install/setup.bash
+   ```
+
+   In each new terminal, source `/opt/ros/jazzy/setup.bash` and the workspace's
+   `install/setup.bash` before running the package.
+
 ## Running
 
 ```bash
@@ -11,7 +53,15 @@ ros2 launch mouse_joystick_interface mouse_joystick_launch.py
 ```
 
 The launch file loads `config/mouse_joystick_params.yaml`. The browser UI is
-available at the configured HTTP host and port.
+available at the configured HTTP host and port: with the supplied configuration,
+open <http://127.0.0.5:8765> if the browser does not open automatically. This
+address is local to the machine running the node. The supplied configuration
+selects Joy output on `/joy`; move the joystick and check the messages from
+another terminal with the ROS 2 and workspace environments loaded:
+
+```bash
+ros2 topic echo /joy
+```
 
 ## Output configuration
 
