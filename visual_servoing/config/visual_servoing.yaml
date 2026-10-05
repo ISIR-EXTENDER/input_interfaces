@@ -1,5 +1,12 @@
 visual_servoing:
   ros__parameters:
     lambda: 1.0
+    robot_type: "kinovagen3"      # or "explorer"
+    camera_type: "usbCam"         # or "usbCam" or "oak"
+    tolerance_linear: 0.01
+    tolerance_angular: 0.1
+    topic_visual_servoing_on : "/ui/visual_servoing/on"
+    topic_visual_servoing_save : "/ui/visual_servoing/save"
+    topic_visual_servoing_clean : "/ui/visual_servoing/clean"
     #common-config: !include saved_tag_goals.yaml
     
