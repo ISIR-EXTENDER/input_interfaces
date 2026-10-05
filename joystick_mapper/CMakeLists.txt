@@ -6,6 +6,7 @@ if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
 endif()
 
 find_package(ament_cmake REQUIRED)
+find_package(Eigen3 REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(sensor_msgs REQUIRED)
@@ -27,6 +28,8 @@ ament_target_dependencies(${PROJECT_NAME}_lib
   signal_processing
   std_msgs
 )
+
+target_link_libraries(${PROJECT_NAME}_lib Eigen3::Eigen)
 
 add_executable(joystick_mapper_node
   src/main.cpp
@@ -60,6 +63,7 @@ ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME}_lib)
 ament_export_targets(export_${PROJECT_NAME})
 ament_export_dependencies(
+  Eigen3
   geometry_msgs
   rclcpp
   sensor_msgs

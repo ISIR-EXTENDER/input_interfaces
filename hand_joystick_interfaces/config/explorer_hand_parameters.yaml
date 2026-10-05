@@ -1,0 +1,24 @@
+hand_joystick_interface:
+  ros__parameters:
+    dead_zone: 0.05
+    saturation_zone: 0.4  # XYZ distance from reference where output saturates at ±1
+    normalization_mode: "vector"
+    landmark_index: 0  # 0=wrist, 8=index finger tip, 9=middle finger MCP
+    output_round_decimals: 2
+    joy_output_topic: "/hand_joy"
+    cartesian_command_topic: "/joystick_cartesian_command"
+    enable_marker_visualization: true  # Set to false to disable RViz marker visualization
+    teleop_cmd_marker_topic: "teleop_cmd_marker"
+    teleop_cmd_marker_frame_id: "base_link"
+    teleop_cmd_marker_scale_x: 0.03
+    teleop_cmd_marker_scale_y: 0.07
+    teleop_cmd_marker_scale_z: 0.07
+    lost_hand_cooldown_sec: 0.2  # Time without valid hand landmarks before publishing zero
+
+hand_landmarks_node:
+  ros__parameters:
+    # Producer display policy; control metrics are mirrored by the launch file.
+    show_control_overlay: true
+    initial_reference: [0.5, 0.5, 0.5]  # Manual startup reference [x, y, z]
+    reset_reference_topic: "/reset_reference"  # std_msgs/Bool rising edge true triggers recentering
+    reset_reference_cooldown_sec: 0.25  # Minimum delay between accepted reset triggers
