@@ -92,8 +92,11 @@ namespace joystick_mapper
 
     twist_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>(output_topic_, 10);
     mode_request_pub_ = create_publisher<std_msgs::msg::String>(mode_request_topic_, 10);
+    active_mode_pub_ = create_publisher<std_msgs::msg::String>(
+        "/joystick_mapper/active_mode", rclcpp::QoS(1).transient_local().reliable());
     gripper_command_pub_ =
         create_publisher<std_msgs::msg::Float64MultiArray>(gripper_command_topic_, 10);
+    publishActiveMode();
   }
 
   void JoystickMapper::readParameters()
@@ -353,6 +356,7 @@ namespace joystick_mapper
     if (active_mode_index_ != previous_mode_index_)
     {
       RCLCPP_INFO(get_logger(), "Active joystick mode changed from axes mode %s to  %s", mode_names_[previous_mode_index_].c_str(), mode_names_[active_mode_index_].c_str());
+      publishActiveMode();
     }
 
     //display the active mode name in the terminal for debugging purposes
@@ -487,5 +491,15 @@ namespace joystick_mapper
     std_msgs::msg::String msg;
     msg.data = normalizeStateName(request);
     mode_request_pub_->publish(msg);
+  }
+
+  void JoystickMapper::publishActiveMode()
+  {
+    std_msgs::msg::String msg;
+    if (!mode_names_.empty())
+    {
+      msg.data = mode_names_[active_mode_index_];
+    }
+    active_mode_pub_->publish(msg);
   }
 } // namespace joystick_mapper

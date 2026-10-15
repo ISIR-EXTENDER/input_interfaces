@@ -1,0 +1,54 @@
+mouse_joystick_interface:
+  ros__parameters:
+    # Local HTTP endpoint used by the browser-based joystick UI.
+    host: "127.0.0.5"
+    port: 8765
+
+    # If a graphical session is available, open the UI automatically at startup.
+    auto_open_browser: true
+
+    # Output message selection: "twist" keeps the existing TeleopCommand
+    # wrapper, while "joy" publishes sensor_msgs/msg/Joy.
+    output_type: "joy"
+
+    # Output topic used when output_type is "twist".
+    teleop_topic: "teleop_cmd"
+
+    # Topic and browser-coordinate mapping used when output_type is "joy".
+    joy_topic: "/joy"
+    joy_axis_count: 2
+    joy_axes:
+      x:
+        index: 0
+        scale: 1.0
+      y:
+        index: 1
+        scale: 1.0
+
+    # Per-button interaction behavior: "press" is momentary, while "toggle"
+    # latches the button on or off on each pointer press.
+    joy_buttons:
+      button_0:
+        type: "press"
+      button_1:
+        type: "toggle"
+      button_2:
+        type: "press"
+      button_3:
+        type: "press"
+      button_4:
+        type: "press"
+      button_5:
+        type: "press"
+      button_6:
+        type: "press"
+      button_7:
+        type: "press"
+      button_8:
+        type: "press"
+      button_9:
+        type: "press"
+      button_10:
+        type: "press"
+      button_11:
+        type: "press"

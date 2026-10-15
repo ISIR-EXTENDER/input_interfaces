@@ -74,6 +74,7 @@ namespace joystick_mapper
                              const std::string &request, const std::string &release_request = {});
     void handleGripperButton(const sensor_msgs::msg::Joy &msg);
     void publishModeRequest(const std::string &request);
+    void publishActiveMode();
     void publishGripperCommand(bool close);
 
     std::string joy_topic_;
@@ -102,6 +103,7 @@ namespace joystick_mapper
 
     rclcpp::Subscription<sensor_msgs::msg::Joy>::SharedPtr joy_sub_;
     rclcpp::Publisher<std_msgs::msg::String>::SharedPtr mode_request_pub_;
+    rclcpp::Publisher<std_msgs::msg::String>::SharedPtr active_mode_pub_;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr gripper_command_pub_;
     rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr twist_pub_;
   };
