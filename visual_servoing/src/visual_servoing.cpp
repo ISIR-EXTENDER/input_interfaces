@@ -21,6 +21,7 @@ VisualServoing::VisualServoing()
     setupSubscribers();
     readYamlApriltags();
     readYamlTransformEEtoCAM();
+    timer_ = this->create_wall_timer(16ms, std::bind(&VisualServoing::timer_callback, this));      // 1/60Hz = 0.016s => 16ms
     timer_ = this->create_wall_timer(33ms, std::bind(&VisualServoing::timer_callback, this));      // 1/30Hz = 0.033s => 33ms
 }
 
