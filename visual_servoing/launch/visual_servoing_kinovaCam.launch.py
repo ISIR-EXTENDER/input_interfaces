@@ -1,7 +1,15 @@
+import os
+
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.substitutions import PathJoinSubstitution
 from launch_ros.substitutions import FindPackageShare
 from launch_ros.actions import Node
+
+from launch.substitutions import (
+    PathJoinSubstitution
+)
+from launch_ros.substitutions import FindPackageShare
 
 def generate_launch_description():
     visual_servoing_config = PathJoinSubstitution([
@@ -17,7 +25,7 @@ def generate_launch_description():
     handeye_tf_config = PathJoinSubstitution([
         FindPackageShare("visual_servoing"),
         "config",
-        "handeye_tf_kinovaCam.yaml",
+        "handeye_tf_kinovagen3_kinovaCam.yaml",
     ])
 
     visual_servoing = Node(

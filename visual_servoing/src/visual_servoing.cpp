@@ -5,6 +5,10 @@
 #include "visual_servoing/visual_servoing.hpp"
 #include "extender_msgs/msg/shared_control_goal.hpp"
 #include "extender_msgs/msg/shared_control_goal_array.hpp"
+#include <filesystem>
+
+// to read package_path
+#include "ament_index_cpp/get_package_share_directory.hpp"
 
 VisualServoing::VisualServoing()
     : Node("visual_servoing")
@@ -12,30 +16,73 @@ VisualServoing::VisualServoing()
     using namespace std::chrono_literals;
 
     getParameters();
+    initVariables();
     setupPublishers();
     setupSubscribers();
+    readYamlApriltags();
     readYamlTransformEEtoCAM();
-    timer_ = this->create_wall_timer(33ms, std::bind(&VisualServoing::timer_callback, this));      // 1/30Hz = 0.033s => 33ms
+    timer_ = this->create_wall_timer(16ms, std::bind(&VisualServoing::timer_callback, this));      // 1/60Hz = 0.016s => 16ms
 }
 
 void VisualServoing::getParameters()
 {
-    std::cout << "getParameters             [*    ] " << std::endl;
+    std::cout << "getParameters             [*     ] " << std::endl;
     
     // Read YAML parameters file 
     this->declare_parameter("lambda", 0.0);
     lambda = this->get_parameter("lambda").as_double();
-    
+    this->declare_parameter("robot_type", "");
+    robot_type = this->get_parameter("robot_type").as_string();
+    this->declare_parameter("camera_type", "");
+    camera_type = this->get_parameter("camera_type").as_string();
+    this->declare_parameter("tolerance_linear", 0.01);
+    tolerance_linear = this->get_parameter("tolerance_linear").as_double();
+    this->declare_parameter("tolerance_angular", 0.1);
+    tolerance_angular = this->get_parameter("tolerance_angular").as_double();
+    this->declare_parameter("topic_visual_servoing_on", "/visual_servoing/on");
+    topic_visual_servoing_on = this->get_parameter("topic_visual_servoing_on").as_string();
+    this->declare_parameter("topic_visual_servoing_save", "/visual_servoing/save");
+    topic_visual_servoing_save = this->get_parameter("topic_visual_servoing_save").as_string();
+    this->declare_parameter("topic_visual_servoing_clear", "/visual_servoing/clear");
+    topic_visual_servoing_clear = this->get_parameter("topic_visual_servoing_clear").as_string();
+
     // read saving apriltags position in Yaml
-    declare_parameter<std::string>("yaml_path", "/home/robingibaud/ros2_ws/src/extender_workspace/src/visual_servoing/config/saved_tag_goals.yaml");
-    yaml_path = get_parameter("yaml_path").as_string();
-    declare_parameter<std::string>("yaml_path_transform_EEtoCAM", "/home/robingibaud/ros2_ws/src/extender_workspace/src/visual_servoing/config/handeye_tf_kinovaCam.yaml");
+    std::string package_dir = ament_index_cpp::get_package_share_directory("visual_servoing");
+    declare_parameter<std::string>("yaml_path_saved_tag_goals", package_dir + "/config/saved_tag_goals.yaml");
+    yaml_path_saved_tag_goals = get_parameter("yaml_path_saved_tag_goals").as_string();
+    declare_parameter<std::string>("yaml_path_transform_EEtoCAM", package_dir + "/config/handeye_tf_" + robot_type +"_" + camera_type + ".yaml");
     yaml_path_transform_EEtoCAM = get_parameter("yaml_path_transform_EEtoCAM").as_string();
+
+    // get qontrol_controller v_max param
+    rclcpp::SyncParametersClient param_client(this, "/qontrol_explorer");
+
+    if (!param_client.wait_for_service(std::chrono::seconds(5))) {
+        RCLCPP_ERROR(this->get_logger(), "Failed to connect to /qontrol_controller parameter service.");
+        return;
+    }
+
+    command_max_linear_velocity_ = param_client.get_parameter<double>("command_max_linear_velocity");
+    command_max_angular_velocity_ = param_client.get_parameter<double>("command_max_angular_velocity");
+    RCLCPP_INFO(this->get_logger(), "command_max_linear_velocity_ : '%lf'", command_max_linear_velocity_);
+    RCLCPP_INFO(this->get_logger(), "command_max_angular_velocity_ : '%lf'", command_max_angular_velocity_);
+}
+
+void VisualServoing::initVariables()
+{
+    std::cout << "initVariables             [**    ] " << std::endl;
+    position_current_step = 1;
+    t_CAMtoTAGd[0] = 0;
+    t_CAMtoTAGd[1] = 0;
+    t_CAMtoTAGd[2] = 0;
+    r_CAMtoTAGd.x() = 0;
+    r_CAMtoTAGd.y() = 0;
+    r_CAMtoTAGd.z() = 0;
+    r_CAMtoTAGd.w() = 0;
 }
 
 void VisualServoing::setupPublishers()
 {
-    std::cout << "setupPublishers           [**   ] " << std::endl;
+    std::cout << "setupPublishers           [***   ] " << std::endl;
     visual_servoing_velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/visual_servoing/velocity_command", 1);
     visual_servoing_error_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/visual_servoing/error_TAGtoTAGd", 1);
     tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
@@ -43,22 +90,23 @@ void VisualServoing::setupPublishers()
 
 void VisualServoing::setupSubscribers()
 {
-    std::cout << "setupSubscribers          [***  ] " << std::endl;
+    std::cout << "setupSubscribers          [****  ] " << std::endl;
     // Initialize TF2 buffer and listener
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(this->get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
-
     
     apriltag_sub = this->create_subscription<extender_msgs::msg::SharedControlGoalArray>(
         "/tag_detections", 1,
         std::bind(&VisualServoing::tagCallback, this, std::placeholders::_1));
     visual_servoing_on_sub = this->create_subscription<std_msgs::msg::Bool>(
-        "/ui/visual_servoing/on", 1,
+        topic_visual_servoing_on, 1,
         std::bind(&VisualServoing::visualServoingOnCallback, this, std::placeholders::_1));
     visual_servoing_save_sub = this->create_subscription<std_msgs::msg::String>(
-        "/ui/visual_servoing/save", 1,
+        topic_visual_servoing_save, 1,
         std::bind(&VisualServoing::visualServoingSaveCallback, this, std::placeholders::_1));
-    
+    visual_servoing_clear_sub = this->create_subscription<std_msgs::msg::String>(
+        topic_visual_servoing_clear, 1,
+        std::bind(&VisualServoing::visualServoingClearCallback, this, std::placeholders::_1));
 }
 
 // -------------------------------------------------------------------------
@@ -68,7 +116,6 @@ void VisualServoing::setupSubscribers()
 void VisualServoing::visualServoingOnCallback(const std_msgs::msg::Bool msg)
 {
     latest_visual_servoing_on = msg;
-    //RCLCPP_INFO(this->get_logger(), "latest_visual_servoing_on : '%d'", latest_visual_servoing_on);
 }
 
 // -------------------------------------------------------------------------
@@ -78,22 +125,40 @@ void VisualServoing::visualServoingSaveCallback(const std_msgs::msg::String msg)
 {
     latest_visual_servoing_save = msg;
     std::string label = "";
-    if (writeYamlApriltags(yaml_path, apriltag.tag_id, label, apriltag.position, apriltag.orientation) == true)
+    if (writeYamlApriltags(yaml_path_saved_tag_goals, apriltag.tag_id, label, apriltag.position, apriltag.orientation) == true)
     {
         RCLCPP_INFO(this->get_logger(), "tag '%lf' saved in yaml file", apriltag.tag_id);
+        readYamlApriltags();
     };
-    //RCLCPP_INFO(this->get_logger(), "latest_visual_servoing_save : '%s'", latest_visual_servoing_save.data);
 }
 
+// -------------------------------------------------------------------------
+// Interface UI : Clear list button callback
+// -------------------------------------------------------------------------
+
+void VisualServoing::visualServoingClearCallback(const std_msgs::msg::String msg)
+{
+    latest_visual_servoing_clear = msg;
+    if (clearYamlApriltags(yaml_path_saved_tag_goals, apriltag.tag_id, listApriltagSave) == true)
+    {
+        RCLCPP_INFO(this->get_logger(), "All tag '%lf' saved positions have been deleted from the '.yaml' file", apriltag.tag_id);
+        readYamlApriltags();
+    };
+}
+
+// -------------------------------------------------------------------------
+// Apriltag_detector package : apriltag position callback
+// -------------------------------------------------------------------------
 
 void VisualServoing::tagCallback(const extender_msgs::msg::SharedControlGoalArray msg)
 {
     latest_tag_detected = msg;
-    //RCLCPP_INFO(this->get_logger(), "tagCallback : message processing ...");
 
     if (msg.goal_array.empty()){
-
-        //RCLCPP_INFO(this->get_logger(), "tagCallback : empty message ...");
+        apriltag.tag_id = 0;
+        apriltag.label = "";
+        apriltag.frame = "";
+        apriltag.saved_transform = "";
         apriltag.position[0]=0.0;
         apriltag.position[1]=0.0;
         apriltag.position[2]=0.0;
@@ -101,6 +166,8 @@ void VisualServoing::tagCallback(const extender_msgs::msg::SharedControlGoalArra
         apriltag.orientation.x()=0.0;
         apriltag.orientation.y()=0.0;
         apriltag.orientation.z()=0.0;
+        position_current_step = 1;                  // if no tag detected, reset the position_current_step to 1
+
     }
     else {        
         apriltag.tag_id = msg.goal_array[0].id;
@@ -123,17 +190,19 @@ void VisualServoing::tagCallback(const extender_msgs::msg::SharedControlGoalArra
 
 }
 
-void VisualServoing::readYamlApriltags(double tag_id_to_follow)                                    // R.G
+void VisualServoing::readYamlApriltags()                                    // R.G
 {
-    //std::cout << "readYamlApriltags         [**** ] " << std::endl;
+    std::cout << "readYamlApriltags         [***** ] " << std::endl;
     // Read Yaml
-    cv::FileStorage fs(yaml_path, cv::FileStorage::READ);
+    cv::FileStorage fs(yaml_path_saved_tag_goals, cv::FileStorage::READ);
     if (!fs.isOpened())
     {
-        std::cerr << "failed to open " << yaml_path << std::endl;
+        std::cerr << "failed to open " << yaml_path_saved_tag_goals << std::endl;
     }
     
     cv::FileNode tags = fs.root();
+
+    listApriltagSave.clear();
 
     for (auto it = tags.begin(); it != tags.end(); ++it)
     {
@@ -144,8 +213,6 @@ void VisualServoing::readYamlApriltags(double tag_id_to_follow)                 
         (*it)["label"] >> label;
         (*it)["frame"] >> frame;
         (*it)["saved_transform"] >> saved_transform;
-
-        //std::cout << "tag_id -> " << tag_id << std::endl;
         
         std::vector<double> position;
         std::vector<double> orientation;
@@ -153,39 +220,38 @@ void VisualServoing::readYamlApriltags(double tag_id_to_follow)                 
         (*it)["position"] >> position;
         (*it)["orientation_wxyz"] >> orientation;
         
-        if (tag_id == tag_id_to_follow){
-            apriltagSave.tag_id = tag_id;
-            apriltagSave.position <<
-                position[0],
-                position[1],
-                position[2];
-            Eigen::Quaterniond temp_local_save (
+        ApriltagSave local_apriltag_save;
+        local_apriltag_save.tag_id = tag_id;
+        local_apriltag_save.frame = frame;
+        local_apriltag_save.saved_transform = saved_transform;
+        local_apriltag_save.position <<
+            position[0],
+            position[1],
+            position[2];
+        Eigen::Quaterniond temp_local_save (
                 orientation[0],
                 orientation[1],
                 orientation[2],
                 orientation[3]);
-            apriltagSave.orientation = temp_local_save;
-        }
-        //std::cout << "local_save.position[0] = " << local_save.position[0] << std::endl;
-        //RCLCPP_INFO(this->get_logger(), "param #3 - apriltagSave = '%lf' ['%lf','%lf','%lf'] ['%lf','%lf','%lf','%lf']", apriltagSave.tag_id, apriltagSave.position[0], apriltagSave.position[1], apriltagSave.position[2], apriltagSave.orientation.w(), apriltagSave.orientation.x(), apriltagSave.orientation.y(), apriltagSave.orientation.z());
+        local_apriltag_save.orientation = temp_local_save;
+        listApriltagSave.push_back(local_apriltag_save);
+
+        geometry_msgs::msg::TransformStamped t;
+
+        t.header.stamp = this->get_clock()->now();
+        t.header.frame_id = "camera_link";
+        t.child_frame_id = "saved_tag";
+
+        t.transform.translation.x = local_apriltag_save.position[0];
+        t.transform.translation.y = local_apriltag_save.position[1];
+        t.transform.translation.z = local_apriltag_save.position[2];
+        t.transform.rotation.x = local_apriltag_save.orientation.x();
+        t.transform.rotation.y = local_apriltag_save.orientation.y();
+        t.transform.rotation.z = local_apriltag_save.orientation.z();
+        t.transform.rotation.w = local_apriltag_save.orientation.w();
+
+        tf_static_broadcaster_->sendTransform(t);
     }
-
-    geometry_msgs::msg::TransformStamped t;
-
-    t.header.stamp = this->get_clock()->now();
-    t.header.frame_id = "camera_link";
-    t.child_frame_id = "saved_tag";
-
-    t.transform.translation.x = apriltagSave.position[0];
-    t.transform.translation.y = apriltagSave.position[1];
-    t.transform.translation.z = apriltagSave.position[2];
-    t.transform.rotation.x = apriltagSave.orientation.x();
-    t.transform.rotation.y = apriltagSave.orientation.y();
-    t.transform.rotation.z = apriltagSave.orientation.z();
-    t.transform.rotation.w = apriltagSave.orientation.w();
-
-    tf_static_broadcaster_->sendTransform(t);
-
     fs.release();
 }
 
@@ -200,7 +266,7 @@ bool VisualServoing::writeYamlApriltags(
 
     if (!file.is_open())
     {
-        //RCLCPP_ERROR(get_logger(), "Failed to open YAML file: %s", yaml_path.c_str());
+        RCLCPP_ERROR(get_logger(), "Failed to open YAML file: %s", yaml_path.c_str());
         return false;
     }
 
@@ -221,17 +287,54 @@ bool VisualServoing::writeYamlApriltags(
     return true;
 }
 
+bool VisualServoing::clearYamlApriltags(
+    std::string yaml_path,
+    double tag_id,
+    std::list<ApriltagSave> listApriltagSave)
+{
+    std::ofstream file(yaml_path, std::ios::trunc); // Open the file in truncate mode to overwrite its contents
+
+    if (!file.is_open())
+    {
+        RCLCPP_ERROR(get_logger(), "Failed to open YAML file: %s", yaml_path.c_str());
+        return false;
+    }
+
+    file << "%YAML:1.0" << "\n";
+    file << "---" << "\n";
+
+    for (ApriltagSave apriltag_saved : listApriltagSave) {
+        if (apriltag_saved.tag_id == tag_id){
+            continue;
+        }
+        else {
+            file << "- tag_id: " << apriltag_saved.tag_id << "\n";
+            file << "  label: \"" << apriltag_saved.label << "\"\n";
+            file << "  frame: \"tag_" << apriltag_saved.tag_id << "\"\n";
+            file << "  saved_transform: \""<< apriltag_saved.saved_transform << "\"\n";
+            file << "  position: ["
+                    << apriltag_saved.position.x() << ", "
+                    << apriltag_saved.position.y() << ", "
+                    << apriltag_saved.position.z() << "]\n";
+            file << "  orientation_wxyz: ["
+                    << apriltag_saved.orientation.w() << ", "
+                    << apriltag_saved.orientation.x() << ", "
+                    << apriltag_saved.orientation.y() << ", "
+                    << apriltag_saved.orientation.z() << "]\n";
+        }
+    }
+    file.close();
+    
+    return true;
+}
+
 void VisualServoing::readYamlTransformEEtoCAM()                                    // R.G
 {
-    std::cout << "readYamlTransformEEtoCAM  [*****] " << std::endl;
+    std::cout << "readYamlTransformEEtoCAM  [******] " << std::endl;
     // Read Yaml
     cv::FileStorage fs(yaml_path_transform_EEtoCAM, cv::FileStorage::READ);
 
     // Info about Yaml file
-    //std::cout << "empty: " << root.empty() << std::endl;
-    //std::cout << "isMap: " << root.isMap() << std::endl;
-    //std::cout << "isSeq: " << root.isSeq() << std::endl;
-
     if (!fs.isOpened())
     {
         std::cerr << "failed to open " << yaml_path_transform_EEtoCAM << std::endl;
@@ -241,6 +344,8 @@ void VisualServoing::readYamlTransformEEtoCAM()                                 
     double tx, ty, tz;
     double qw, qx, qy, qz;
     
+    fs["ee_frame"] >> ee_frame;
+    fs["camera_frame"] >> camera_frame;
     fs["tx"] >> tx;
     fs["ty"] >> ty;
     fs["tz"] >> tz;
@@ -255,12 +360,11 @@ void VisualServoing::readYamlTransformEEtoCAM()                                 
     EEtoCAM.position = t_EEtoCAM;
     EEtoCAM.orientation = r_EEtoCAM.toRotationMatrix();
 
-    
     geometry_msgs::msg::TransformStamped t;
 
     t.header.stamp = this->get_clock()->now();
-    t.header.frame_id = "end_effector_link";
-    t.child_frame_id = "camera_link";
+    t.header.frame_id = ee_frame;
+    t.child_frame_id = camera_frame;
 
     t.transform.translation.x = tx;
     t.transform.translation.y = ty;
@@ -307,8 +411,7 @@ Eigen::Vector3d VisualServoing::quatToThetaU(                                  /
     theta_u[0]=b_s[0];
     theta_u[1]=b_s[1];
     theta_u[2]=b_s[2];
-    //print("theta.u = {} {}  {}".format( (1/ np.sin(local_theta/2)) * qDiff[0], (1/ np.sin(local_theta/2)) * qDiff[1], (1 / np.sin(local_theta/2)) * qDiff[2]))
-    
+
     return theta_u;
 }
 
@@ -341,15 +444,15 @@ void VisualServoing::sat (
 
 void VisualServoing::timer_callback(){
     if (latest_visual_servoing_on.data == false){
+        position_current_step = 1;
         return;
     }
-    //std::cout << "Visual_servoing : on" << std::endl;
     double sum_position_apriltag_callback;
     sum_position_apriltag_callback = apriltag.position[0] + apriltag.position[1] + apriltag.position[2];
     if (sum_position_apriltag_callback == 0.0){
-        //std::cout << "no apriltag -> skip visual servoing computation" << std::endl;
         geometry_msgs::msg::TwistStamped vel_to_pub;
         vel_to_pub.header.stamp = this->now();
+        vel_to_pub.header.frame_id = "base_link";
         vel_to_pub.twist.linear.x = 0.0;
         vel_to_pub.twist.linear.y = 0.0;
         vel_to_pub.twist.linear.z = 0.0;
@@ -357,25 +460,63 @@ void VisualServoing::timer_callback(){
         vel_to_pub.twist.angular.y = 0.0;
         vel_to_pub.twist.angular.z = 0.0;
         visual_servoing_velocity_pub->publish(vel_to_pub);
+        position_saved_step = 0;
+        position_current_step = 1;
     }
     
     else{
-        // param #1 - gain                                                                                          // OK
-        //RCLCPP_INFO(this->get_logger(), "param #1 - lambda = '%lf'", lambda);
+        // param #1 - gain (lambda)                                                                                 // OK
 
         // param #2 - transformation of EE's frame to Camera's frame                                                // OK
         // already done in "readYamlTransformEEtoCAM" function
-        //RCLCPP_INFO(this->get_logger(), "param #2 - EEtoCAM = ['%lf','%lf','%lf']", EEtoCAM.position.x(), EEtoCAM.position.y(), EEtoCAM.position.z());
 
         // param #3 - transformation of Camera's frame to Tag frame saved                                           // OK
-        readYamlApriltags(apriltag.tag_id);
         Eigen::Vector3d t_CAMtoTAGd;
-        t_CAMtoTAGd = apriltagSave.position;
         Eigen::Quaterniond r_CAMtoTAGd;
-        r_CAMtoTAGd = apriltagSave.orientation;
-        CAMtoTAGd.position = t_CAMtoTAGd;
-        CAMtoTAGd.orientation = r_CAMtoTAGd.toRotationMatrix();
-        //RCLCPP_INFO(this->get_logger(), "param #3 - CAMtoTAGd = '%lf' ['%lf','%lf','%lf'] ['%lf','%lf','%lf','%lf']", apriltagSave.tag_id, t_CAMtoTAGd[0], t_CAMtoTAGd[1], t_CAMtoTAGd[2], r_CAMtoTAGd.w(), r_CAMtoTAGd.x(), r_CAMtoTAGd.y(), r_CAMtoTAGd.z());
+        number_of_position_saved = 0;
+
+            // param #3.1 - check how many apriltag positions have been learnt based on the current apriltag's ID read by the camera
+        for (ApriltagSave apriltag_saved : listApriltagSave) {
+            if (apriltag_saved.tag_id == apriltag.tag_id){
+                number_of_position_saved = number_of_position_saved + 1;
+            }
+        }
+
+        if (number_of_position_saved == 0){                              // if "saved_tag_goals.yaml" don't have position saved for the current apriltag's id read by the camera
+            std::cout << "[timer_callback] 'saved_tag_goals.yaml' don't have position saved for the current apriltag's id read by the camera => exit computation step" << std::endl;
+            return;                                              // => exit computation step
+        }
+
+            // param #3.2 - Read the Apriltag position saved based on the values read previously
+        position_saved_step = 0;
+        for (auto it = listApriltagSave.rbegin(); it != listApriltagSave.rend(); ++it){             // reverse iterator to read the last saved position first
+            const ApriltagSave& apriltag_saved = *it;
+            if (apriltag_saved.tag_id == apriltag.tag_id){
+                position_saved_step = position_saved_step+1;
+                if (position_saved_step == position_current_step || position_current_step == number_of_position_saved){
+                    t_CAMtoTAGd = apriltag_saved.position;
+                    r_CAMtoTAGd = apriltag_saved.orientation;
+                    CAMtoTAGd.position = t_CAMtoTAGd;
+                    CAMtoTAGd.orientation = r_CAMtoTAGd.toRotationMatrix();
+                }
+            }
+        }
+                
+        geometry_msgs::msg::TransformStamped t;
+
+        t.header.stamp = this->get_clock()->now();
+        t.header.frame_id = "camera_link";
+        t.child_frame_id = "saved_tag";
+
+        t.transform.translation.x = t_CAMtoTAGd[0];
+        t.transform.translation.y = t_CAMtoTAGd[1];
+        t.transform.translation.z = t_CAMtoTAGd[2];
+        t.transform.rotation.x = r_CAMtoTAGd.x();
+        t.transform.rotation.y = r_CAMtoTAGd.y();
+        t.transform.rotation.z = r_CAMtoTAGd.z();
+        t.transform.rotation.w = r_CAMtoTAGd.w();
+
+        tf_static_broadcaster_->sendTransform(t);
 
         // param #4 - transformation of Camera's frame to Tag frame currently read                                  // OK
         // autre option : passer par le "topic /tag_detector"
@@ -385,7 +526,6 @@ void VisualServoing::timer_callback(){
         r_CAMtoTAG = apriltag.orientation;
         CAMtoTAG.position = t_CAMtoTAG;
         CAMtoTAG.orientation = r_CAMtoTAG.toRotationMatrix();
-        //RCLCPP_INFO(this->get_logger(), "param #4 - apriltag = '%lf' ['%lf','%lf','%lf'] ['%lf','%lf','%lf','%lf']", apriltag.tag_id, apriltag.position[0], apriltag.position[1], apriltag.position[2], apriltag.orientation.w(), apriltag.orientation.x(), apriltag.orientation.y(), apriltag.orientation.z());
 
         CAMtoTAG.position = t_CAMtoTAG;
         CAMtoTAG.orientation = r_CAMtoTAG.toRotationMatrix();
@@ -403,7 +543,6 @@ void VisualServoing::timer_callback(){
                     temp_BtoEE.transform.rotation.z);
         BtoEE.position = t_BtoEE;
         BtoEE.orientation = r_BtoEE.toRotationMatrix();
-        //RCLCPP_INFO(this->get_logger(), "param #5 - BtoEE : ['%lf','%lf','%lf'] ['%lf','%lf','%lf','%lf']", t_BtoEE[0], t_BtoEE[1], t_BtoEE[2], r_BtoEE.w(), r_BtoEE.x(), r_BtoEE.y(), r_BtoEE.z());
         
         // 1 - Computation velocity of tagEtag_in_cam ************************************************************************************************************************
         Eigen::Vector3d velocity_of_tagEtag_in_cam;
@@ -416,14 +555,11 @@ void VisualServoing::timer_callback(){
 
         Eigen::AngleAxis< double > r_TAGtoTAGd_aa (TAGtoTAGd.orientation);
         Eigen::Vector3d TAG_theta_u = r_TAGtoTAGd_aa.angle() * r_TAGtoTAGd_aa.axis();
-        //std::cout << "TAG_theta_u = ["<< TAG_theta_u[0] << " , " << TAG_theta_u[1] << " , " << TAG_theta_u[2] << " ]" << r_TAGtoTAGd_aa.angle() << std::endl;
-        
+
         Eigen::Vector3d CAM_theta_u;
         CAM_theta_u = CAMtoTAG.orientation * TAG_theta_u;
         Eigen::Vector3d omega_of_tagEtag_in_cam;
         omega_of_tagEtag_in_cam = lambda * CAM_theta_u;
-        //std::cout << "CAM_theta_u = ["<< CAM_theta_u[0] << " , " << CAM_theta_u[1] << " , " << CAM_theta_u[2] << " ]" << std::endl;
-        //std::cout << "omega_of_tagEtag_in_cam = ["<< omega_of_tagEtag_in_cam[0] << " , " << omega_of_tagEtag_in_cam[1] << " , " << omega_of_tagEtag_in_cam[2] << " ]" << std::endl;
 
         // 2 - Computation velocity of tagEee_in_b ************************************************************************************************************************
         Eigen::Vector3d velocity_of_tagEcam_in_tag = -velocity_of_tagEtag_in_cam;
@@ -437,22 +573,32 @@ void VisualServoing::timer_callback(){
         Eigen::Vector3d omega_of_ee_in_b;
         velocity_of_ee_in_b = (BtoEE.orientation*EEtoCAM.orientation)*velocity_of_ee_in_cam;
         omega_of_ee_in_b = (BtoEE.orientation*EEtoCAM.orientation)*(-omega_of_tagEtag_in_cam);
-        //omega_of_ee_in_b = omega_of_tagEtag_in_cam;
         
         // Saturation
-        
-        float v_max_max = 0.2;
-        float characteristic_lenght = 0.5;
-        float omega_max_max = v_max_max/characteristic_lenght ;
+        float v_max_max = command_max_linear_velocity_;                                                       // 0.2
+        float characteristic_lenght = 0.5;                                                                    // 0.5
+        float omega_max_max = v_max_max/characteristic_lenght;                                                // option #2 : omega_max_max = command_max_angular_velocity_;
         sat(velocity_of_ee_in_b, omega_of_ee_in_b, v_max_max,omega_max_max);
         
+        // Normalization
+        velocity_of_ee_in_b = velocity_of_ee_in_b / v_max_max;
+        omega_of_ee_in_b = omega_of_ee_in_b / omega_max_max;
 
+        float error_position;
+        error_position = abs(velocity_of_ee_in_b[0]) + abs(velocity_of_ee_in_b[1]) + abs(velocity_of_ee_in_b[2]);
+        float error_orientation;
+        error_orientation = abs(omega_of_ee_in_b[0]) + abs(omega_of_ee_in_b[1]) + abs(omega_of_ee_in_b[2]);
+        
+        if (error_position<tolerance_linear && error_orientation<tolerance_angular && position_current_step<number_of_position_saved){
+            position_current_step = position_current_step+1;
+        }
         // publication
         //  outputs : 
         //      -> velocity_of_ee_in_b[3]
         //      -> omega_of_ee_in_b[3]
         geometry_msgs::msg::TwistStamped vel_to_pub;
         vel_to_pub.header.stamp = this->now();
+        vel_to_pub.header.frame_id = "base_link";
 
         vel_to_pub.twist.linear.x = velocity_of_ee_in_b[0];
         vel_to_pub.twist.linear.y = velocity_of_ee_in_b[1];
@@ -460,21 +606,14 @@ void VisualServoing::timer_callback(){
         vel_to_pub.twist.angular.x = omega_of_ee_in_b[0];
         vel_to_pub.twist.angular.y = omega_of_ee_in_b[1];
         vel_to_pub.twist.angular.z = omega_of_ee_in_b[2];
-        
-        /*
-        vel_to_pub.twist.linear.x = 0.0;
-        vel_to_pub.twist.linear.y = 0.0;
-        vel_to_pub.twist.linear.z = 0.0;
-        vel_to_pub.twist.angular.x = 0.0;
-        vel_to_pub.twist.angular.y = 0.0;
-        vel_to_pub.twist.angular.z = 0.0;
-        */
 
         visual_servoing_velocity_pub->publish(vel_to_pub);
 
         // Débug
         geometry_msgs::msg::TwistStamped error_pub;
         error_pub.header.stamp = this->now();
+        error_pub.header.frame_id = "base_link";
+
         error_pub.twist.linear.x = abs(velocity_of_tagEtag_in_cam[0]/lambda);
         error_pub.twist.linear.y = abs(velocity_of_tagEtag_in_cam[1]/lambda);
         error_pub.twist.linear.z = abs(velocity_of_tagEtag_in_cam[2]/lambda);
@@ -482,8 +621,6 @@ void VisualServoing::timer_callback(){
         error_pub.twist.angular.y = abs(CAM_theta_u[1]);
         error_pub.twist.angular.z = abs(CAM_theta_u[2]);
         visual_servoing_error_pub->publish(error_pub);
-
-        //std::cout << "vel_to_pub = [" << vel_to_pub.twist.linear.x << " , " << vel_to_pub.twist.linear.y << " , " << vel_to_pub.twist.linear.x << " ]" << std::endl;
     }
 }
 
