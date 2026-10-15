@@ -43,8 +43,8 @@ void VisualServoing::getParameters()
     topic_visual_servoing_on = this->get_parameter("topic_visual_servoing_on").as_string();
     this->declare_parameter("topic_visual_servoing_save", "/visual_servoing/save");
     topic_visual_servoing_save = this->get_parameter("topic_visual_servoing_save").as_string();
-    this->declare_parameter("topic_visual_servoing_clean", "/visual_servoing/clean");
-    topic_visual_servoing_clean = this->get_parameter("topic_visual_servoing_clean").as_string();
+    this->declare_parameter("topic_visual_servoing_clear", "/visual_servoing/clear");
+    topic_visual_servoing_clear = this->get_parameter("topic_visual_servoing_clear").as_string();
 
     // read saving apriltags position in Yaml
     std::string package_dir = ament_index_cpp::get_package_share_directory("visual_servoing");
@@ -104,9 +104,9 @@ void VisualServoing::setupSubscribers()
     visual_servoing_save_sub = this->create_subscription<std_msgs::msg::String>(
         topic_visual_servoing_save, 1,
         std::bind(&VisualServoing::visualServoingSaveCallback, this, std::placeholders::_1));
-    visual_servoing_clean_sub = this->create_subscription<std_msgs::msg::String>(
-        topic_visual_servoing_clean, 1,
-        std::bind(&VisualServoing::visualServoingCleanCallback, this, std::placeholders::_1));
+    visual_servoing_clear_sub = this->create_subscription<std_msgs::msg::String>(
+        topic_visual_servoing_clear, 1,
+        std::bind(&VisualServoing::visualServoingClearCallback, this, std::placeholders::_1));
 }
 
 // -------------------------------------------------------------------------
@@ -135,13 +135,13 @@ void VisualServoing::visualServoingSaveCallback(const std_msgs::msg::String msg)
 }
 
 // -------------------------------------------------------------------------
-// Interface UI : Clean list button callback
+// Interface UI : Clear list button callback
 // -------------------------------------------------------------------------
 
-void VisualServoing::visualServoingCleanCallback(const std_msgs::msg::String msg)
+void VisualServoing::visualServoingClearCallback(const std_msgs::msg::String msg)
 {
-    latest_visual_servoing_clean = msg;
-    if (cleanYamlApriltags(yaml_path_saved_tag_goals, apriltag.tag_id, listApriltagSave) == true)
+    latest_visual_servoing_clear = msg;
+    if (clearYamlApriltags(yaml_path_saved_tag_goals, apriltag.tag_id, listApriltagSave) == true)
     {
         RCLCPP_INFO(this->get_logger(), "All tag '%lf' saved positions have been deleted from the '.yaml' file", apriltag.tag_id);
         readYamlApriltags();
@@ -298,7 +298,7 @@ bool VisualServoing::writeYamlApriltags(
     return true;
 }
 
-bool VisualServoing::cleanYamlApriltags(
+bool VisualServoing::clearYamlApriltags(
     std::string yaml_path,
     double tag_id,
     std::list<ApriltagSave> listApriltagSave)

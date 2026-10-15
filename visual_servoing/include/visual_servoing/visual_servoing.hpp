@@ -55,7 +55,7 @@ private:
    * @param tolerance_angular
    * @param topic_visual_servoing_on
    * @param topic_visual_servoing_save
-   * @param topic_visual_servoing_clean
+   * @param topic_visual_servoing_clear
    */
   template <typename T>
   
@@ -82,7 +82,7 @@ private:
   // Callback to receive Twist commands from the teleop node
   void visualServoingOnCallback(const std_msgs::msg::Bool msg);
   void visualServoingSaveCallback(const std_msgs::msg::String msg);
-  void visualServoingCleanCallback(const std_msgs::msg::String msg);
+  void visualServoingClearCallback(const std_msgs::msg::String msg);
   void tagCallback(const extender_msgs::msg::SharedControlGoalArray msg);
 
   void timer_callback();
@@ -94,7 +94,7 @@ private:
     const std::string label,
     const Eigen::Vector3d position,
     const Eigen::Quaterniond orientation);
-  bool cleanYamlApriltags(
+  bool clearYamlApriltags(
     std::string yaml_path,
     double tag_id,
     std::list<ApriltagSave> listApriltagSave);
@@ -111,7 +111,7 @@ private:
   ///------------------------------------------------- Variables
   std_msgs::msg::Bool latest_visual_servoing_on;
   std_msgs::msg::String latest_visual_servoing_save;
-  std_msgs::msg::String latest_visual_servoing_clean;
+  std_msgs::msg::String latest_visual_servoing_clear;
   extender_msgs::msg::SharedControlGoalArray latest_tag_detected;
 
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr visual_servoing_velocity_pub;
@@ -120,7 +120,7 @@ private:
   rclcpp::Subscription<extender_msgs::msg::SharedControlGoalArray>::SharedPtr apriltag_sub;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr visual_servoing_on_sub;
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr visual_servoing_save_sub;
-  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr visual_servoing_clean_sub;
+  rclcpp::Subscription<std_msgs::msg::String>::SharedPtr visual_servoing_clear_sub;
 
   // Input Param
   std::string robot_type;     // param for yaml path file
@@ -131,7 +131,7 @@ private:
   double tolerance_angular;   // param - tolerance for angular error
   std::string topic_visual_servoing_on;
   std::string topic_visual_servoing_save;
-  std::string topic_visual_servoing_clean;
+  std::string topic_visual_servoing_clear;
   TransformHelper EEtoCAM;      // param #2 - calibration saved on yaml file
   TransformHelper CAMtoTAGd;  // param #3 - Apriltag saved on yaml file
   Eigen::Vector3d t_CAMtoTAGd;

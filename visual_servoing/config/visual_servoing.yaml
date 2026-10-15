@@ -7,6 +7,6 @@ visual_servoing:
     tolerance_angular: 0.1
     topic_visual_servoing_on : "/ui/visual_servoing/on"
     topic_visual_servoing_save : "/ui/visual_servoing/save"
-    topic_visual_servoing_clean : "/ui/visual_servoing/clean"
+    topic_visual_servoing_clear : "/ui/visual_servoing/clear"
     #common-config: !include saved_tag_goals.yaml
     
