@@ -489,7 +489,7 @@ void VisualServoing::timer_callback(){
 
             // param #3.2 - Read the Apriltag position saved based on the values read previously
         position_saved_step = 0;
-        for (auto it = listApriltagSave.begin(); it != listApriltagSave.end(); ++it){             // reverse iterator to read the last saved position first
+        for (auto it = listApriltagSave.rbegin(); it != listApriltagSave.rend(); ++it){             // reverse iterator to read the last saved position first
             const ApriltagSave& apriltag_saved = *it;
             if (apriltag_saved.tag_id == apriltag.tag_id){
                 position_saved_step = position_saved_step+1;
