@@ -576,14 +576,13 @@ void VisualServoing::timer_callback(){
         
         // Saturation
         float v_max_max = command_max_linear_velocity_;                                                       // 0.2
-        float characteristic_lenght = command_max_angular_velocity_;                                          // 0.5
-        float omega_max_max = v_max_max/characteristic_lenght ;
+        float characteristic_lenght = 0.5;                                                                    // 0.5
+        float omega_max_max = v_max_max/characteristic_lenght;                                                // option #2 : omega_max_max = command_max_angular_velocity_;
         sat(velocity_of_ee_in_b, omega_of_ee_in_b, v_max_max,omega_max_max);
         
         // Normalization
         velocity_of_ee_in_b = velocity_of_ee_in_b / v_max_max;
         omega_of_ee_in_b = omega_of_ee_in_b / omega_max_max;
-        
 
         float error_position;
         error_position = abs(velocity_of_ee_in_b[0]) + abs(velocity_of_ee_in_b[1]) + abs(velocity_of_ee_in_b[2]);
