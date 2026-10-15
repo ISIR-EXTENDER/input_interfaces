@@ -41,6 +41,7 @@ ament_target_dependencies(visual_servoing
   extender_msgs
   cv_bridge
   angles
+  ament_index_cpp
   )
 
 target_include_directories(visual_servoing PUBLIC
