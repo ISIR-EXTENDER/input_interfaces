@@ -66,7 +66,7 @@ private:
   rclcpp::TimerBase::SharedPtr hand_loss_timer_;
   rclcpp::Publisher<sensor_msgs::msg::Joy>::SharedPtr joy_pub_;
   rclcpp::Subscription<geometry_msgs::msg::TwistStamped>::SharedPtr cartesian_command_sub_;
-  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr teleop_cmd_marker_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr cartesian_command_marker_pub_;
 
   // Parameters
   ControlMappingConfig control_mapping_config_;

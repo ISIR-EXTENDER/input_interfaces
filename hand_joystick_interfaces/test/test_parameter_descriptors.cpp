@@ -41,11 +41,11 @@ constexpr std::array<std::string_view, 14> kParameterNames{{
   "enable_marker_visualization",
   "joy_output_topic",
   "cartesian_command_topic",
-  "teleop_cmd_marker_topic",
-  "teleop_cmd_marker_frame_id",
-  "teleop_cmd_marker_scale_x",
-  "teleop_cmd_marker_scale_y",
-  "teleop_cmd_marker_scale_z",
+  "cartesian_command_marker_topic",
+  "cartesian_command_marker_frame_id",
+  "cartesian_command_marker_scale_x",
+  "cartesian_command_marker_scale_y",
+  "cartesian_command_marker_scale_z",
 }};
 
 TEST(ParameterDescriptors, CoversEveryPublicParameter)

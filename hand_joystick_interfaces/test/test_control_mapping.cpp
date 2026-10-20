@@ -22,7 +22,6 @@
 
 #include <Eigen/Core>
 
-#include <cstdint>
 #include <limits>
 
 #include "hand_joystick_interface/control_mapping.hpp"
@@ -37,14 +36,6 @@ TEST(ControlMapping, ParsesSupportedNormalizationModes)
   EXPECT_EQ(parseNormalizationMode("axis"), NormalizationMode::Axis);
   EXPECT_EQ(parseNormalizationMode("vector"), NormalizationMode::Vector);
   EXPECT_FALSE(parseNormalizationMode("unsupported").has_value());
-}
-
-TEST(ControlMapping, ValidatesLandmarkIndexBounds)
-{
-  EXPECT_FALSE(isValidLandmarkIndex(-1));
-  EXPECT_TRUE(isValidLandmarkIndex(0));
-  EXPECT_TRUE(isValidLandmarkIndex(20));
-  EXPECT_FALSE(isValidLandmarkIndex(21));
 }
 
 TEST(ControlMapping, PublishesNormalizedAxesInLandmarkOrder)

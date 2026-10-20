@@ -24,14 +24,21 @@ The removed depth-inference video node was never part of the installed
 
 ## Quick Start
 
-Build and source the required packages:
+First follow the [MediaPipe environment setup](../../tools/mediapipe_mocap/README.md#environment)
+for `.venv_mediapipe` and its constrained Python dependencies, including
+DepthAI. Then build and source the required packages:
 
 ```bash
-cd ~/extender_workspace
-colcon build --packages-up-to mediapipe_mocap hand_joystick_interfaces
+cd /home/emoullet/dev/extender_workspace
+source /opt/ros/jazzy/setup.bash
+source .venv_mediapipe/bin/activate
+colcon build --packages-up-to hand_joystick_interfaces \
+  --cmake-args -DBUILD_TESTING=ON -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
 ```
 
+Prepare each additional terminal with the same workspace directory,
+ROS setup, virtual environment, and `install/setup.bash`.
 Launch the OAK producer, joystick consumer, and mapper:
 
 ```bash
@@ -66,7 +73,8 @@ hand and valid depth reconstruction are available:
   invalid.
 
 The joystick watchdog owns the zero-command response when clouds stop
-arriving.
+arriving. When valid clouds resume, commands use the existing reference;
+tracking loss does not request a new reference.
 
 ## Reference Reset
 
@@ -109,7 +117,7 @@ Subscribed by `hand_joystick_node`:
 Published by `hand_joystick_node`:
 
 - `/hand_joy` (`sensor_msgs/Joy`)
-- `/teleop_cmd_marker` (`visualization_msgs/Marker`), when enabled
+- `/cartesian_command_marker` (`visualization_msgs/Marker`), when enabled
 
 ## Troubleshooting
 
@@ -138,7 +146,7 @@ Jittery control:
 - [MediaPipe Mocap README](../../tools/mediapipe_mocap/README.md)
 
 
-## Mapper Configuration and Migration
+## Mapper Configuration
 
 The OAK launch starts the mapper by default using
 `config/hand_joystick_mapper.yaml`. Normalized landmark XYZ axes are converted
@@ -151,6 +159,19 @@ Use `start_mapper:=false` when Explorer bringup already owns the mapper, and
 pass the hand mapper YAML as its `joystick_config_file`.
 See the main README for complete manager integration commands.
 
-The old `/teleop_cmd` output and hand-node `translation_axes_order` /
-`translation_axes_factor` settings are removed. Older fractional-teleoperation
-launches must migrate to the Cartesian manager path; no legacy output is kept.
+## Validation and Robot Bringup
+
+Follow the main README's [automated and manual validation](README.md#validation)
+for camera-free regression tests and the expected command/stop behavior. Check
+OAK-specific reconstruction separately: valid depth should produce 21 metric
+landmarks; invalid depth should stop cloud publication and trigger the consumer
+watchdog.
+
+The [robot integration procedure](README.md#mapper-and-cartesian-manager-integration)
+builds `cartesian_manager`, starts Explorer, and avoids a duplicate mapper.
+Substitute `oak_hand_joystick_launch.py start_mapper:=false` for the USB launch
+in that procedure.
+
+Documentation-only edits require no build, node restart, or web page refresh.
+After code or launch/configuration changes, rebuild the affected packages,
+source the installation in each terminal, and restart the affected nodes.

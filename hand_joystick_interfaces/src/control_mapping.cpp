@@ -38,12 +38,6 @@ std::optional<NormalizationMode> parseNormalizationMode(const std::string & valu
   return std::nullopt;
 }
 
-bool isValidLandmarkIndex(std::int64_t index)
-{
-  return index >= 0 &&
-         static_cast<std::size_t>(index) < kHandLandmarkCount;
-}
-
 bool isFiniteLandmark(const Eigen::Vector3d & landmark)
 {
   return landmark.allFinite();

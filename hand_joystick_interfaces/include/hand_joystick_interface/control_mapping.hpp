@@ -24,7 +24,6 @@
 #include <Eigen/Core>
 
 #include <cstddef>
-#include <cstdint>
 #include <optional>
 #include <string>
 
@@ -33,7 +32,6 @@ namespace hand_joystick_interface
 
 constexpr std::size_t kHandLandmarkCount = 21;
 constexpr std::size_t kTranslationAxisCount = 3;
-constexpr std::size_t kDefaultLandmarkIndex = 8;
 
 enum class NormalizationMode
 {
@@ -50,8 +48,6 @@ struct ControlMappingConfig
 };
 
 std::optional<NormalizationMode> parseNormalizationMode(const std::string & value);
-
-bool isValidLandmarkIndex(std::int64_t index);
 
 bool isFiniteLandmark(const Eigen::Vector3d & landmark);
 

@@ -10,7 +10,6 @@ find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rcl_interfaces REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -60,7 +59,6 @@ ament_target_dependencies(hand_joystick_node
   rclcpp
   rcl_interfaces
   geometry_msgs
-  std_msgs
   sensor_msgs
   visualization_msgs
   Eigen3

@@ -66,25 +66,25 @@ HandJoystickInterface::HandJoystickInterface()
     "/joystick_cartesian_command",
     parameterDescriptor("cartesian_command_topic"));
   this->declare_parameter(
-    "teleop_cmd_marker_topic",
-    "teleop_cmd_marker",
-    parameterDescriptor("teleop_cmd_marker_topic"));
+    "cartesian_command_marker_topic",
+    "cartesian_command_marker",
+    parameterDescriptor("cartesian_command_marker_topic"));
   this->declare_parameter(
-    "teleop_cmd_marker_frame_id",
+    "cartesian_command_marker_frame_id",
     "base_link",
-    parameterDescriptor("teleop_cmd_marker_frame_id"));
+    parameterDescriptor("cartesian_command_marker_frame_id"));
   this->declare_parameter(
-    "teleop_cmd_marker_scale_x",
+    "cartesian_command_marker_scale_x",
     0.03,
-    parameterDescriptor("teleop_cmd_marker_scale_x"));
+    parameterDescriptor("cartesian_command_marker_scale_x"));
   this->declare_parameter(
-    "teleop_cmd_marker_scale_y",
+    "cartesian_command_marker_scale_y",
     0.07,
-    parameterDescriptor("teleop_cmd_marker_scale_y"));
+    parameterDescriptor("cartesian_command_marker_scale_y"));
   this->declare_parameter(
-    "teleop_cmd_marker_scale_z",
+    "cartesian_command_marker_scale_z",
     0.07,
-    parameterDescriptor("teleop_cmd_marker_scale_z"));
+    parameterDescriptor("cartesian_command_marker_scale_z"));
   // Get parameters
   control_mapping_config_.dead_zone =
     this->get_parameter("dead_zone").as_double();
@@ -98,11 +98,11 @@ HandJoystickInterface::HandJoystickInterface()
     this->get_parameter("output_round_decimals").as_int());
   enable_marker_visualization_ = this->get_parameter("enable_marker_visualization").as_bool();
   joy_output_topic_ = this->get_parameter("joy_output_topic").as_string();
-  const auto cmd_vel_marker_topic = this->get_parameter("teleop_cmd_marker_topic").as_string();
-  marker_frame_id_ = this->get_parameter("teleop_cmd_marker_frame_id").as_string();
-  marker_scale_x_ = this->get_parameter("teleop_cmd_marker_scale_x").as_double();
-  marker_scale_y_ = this->get_parameter("teleop_cmd_marker_scale_y").as_double();
-  marker_scale_z_ = this->get_parameter("teleop_cmd_marker_scale_z").as_double();
+  const auto marker_topic = this->get_parameter("cartesian_command_marker_topic").as_string();
+  marker_frame_id_ = this->get_parameter("cartesian_command_marker_frame_id").as_string();
+  marker_scale_x_ = this->get_parameter("cartesian_command_marker_scale_x").as_double();
+  marker_scale_y_ = this->get_parameter("cartesian_command_marker_scale_y").as_double();
+  marker_scale_z_ = this->get_parameter("cartesian_command_marker_scale_z").as_double();
   if (!std::isfinite(control_mapping_config_.dead_zone) ||
     control_mapping_config_.dead_zone < 0.0)
   {
@@ -155,8 +155,8 @@ HandJoystickInterface::HandJoystickInterface()
   joy_pub_ = this->create_publisher<sensor_msgs::msg::Joy>(joy_output_topic_, 10);
 
   if (enable_marker_visualization_) {
-    teleop_cmd_marker_pub_ =
-      this->create_publisher<visualization_msgs::msg::Marker>(cmd_vel_marker_topic, 10);
+    cartesian_command_marker_pub_ =
+      this->create_publisher<visualization_msgs::msg::Marker>(marker_topic, 10);
     cartesian_command_sub_ = this->create_subscription<geometry_msgs::msg::TwistStamped>(
       this->get_parameter("cartesian_command_topic").as_string(), 10,
       [this](geometry_msgs::msg::TwistStamped::ConstSharedPtr command) {
@@ -184,9 +184,10 @@ HandJoystickInterface::HandJoystickInterface()
       enable_marker_visualization_ ? "enabled" : "disabled");
   RCLCPP_INFO(this->get_logger(), "Lost-hand cooldown: %.3f s", lost_hand_cooldown_sec_);
   if (enable_marker_visualization_) {
-    RCLCPP_INFO(this->get_logger(), "Teleop_cmd marker topic: %s (frame_id: %s)",
-        cmd_vel_marker_topic.c_str(), marker_frame_id_.c_str());
-    RCLCPP_INFO(this->get_logger(), "Teleop_cmd marker scale: [%.3f, %.3f, %.3f]", marker_scale_x_,
+    RCLCPP_INFO(this->get_logger(), "Cartesian command marker topic: %s (frame_id: %s)",
+        marker_topic.c_str(), marker_frame_id_.c_str());
+    RCLCPP_INFO(this->get_logger(), "Cartesian command marker scale: [%.3f, %.3f, %.3f]",
+        marker_scale_x_,
         marker_scale_y_, marker_scale_z_);
   }
   RCLCPP_INFO(this->get_logger(),
@@ -304,7 +305,7 @@ void HandJoystickInterface::publishMarker(const geometry_msgs::msg::TwistStamped
   visualization_msgs::msg::Marker marker_msg;
   marker_msg.header.stamp = this->now();
   marker_msg.header.frame_id = marker_frame_id_;
-  marker_msg.ns = "teleop_cmd";
+  marker_msg.ns = "cartesian_command";
   marker_msg.id = 0;
   marker_msg.type = visualization_msgs::msg::Marker::ARROW;
   marker_msg.action = visualization_msgs::msg::Marker::ADD;
@@ -326,7 +327,7 @@ void HandJoystickInterface::publishMarker(const geometry_msgs::msg::TwistStamped
   end.z = command.twist.linear.z;
 
   marker_msg.points = {start, end};
-  teleop_cmd_marker_pub_->publish(marker_msg);
+  cartesian_command_marker_pub_->publish(marker_msg);
 }
 
 }  // namespace hand_joystick_interface

@@ -27,7 +27,7 @@ Subscribes to hand landmark data from `mediapipe_mocap` and publishes normalized
 
 **Published Topics:**
 - `/hand_joy` (`sensor_msgs/msg/Joy`) - Three normalized landmark XYZ axes; no buttons
-- `/teleop_cmd_marker` (`visualization_msgs/msg/Marker`) - Mapped translation arrow, when enabled
+- `/cartesian_command_marker` (`visualization_msgs/msg/Marker`) - Mapped translation arrow, when enabled
 
 The mapper started by the launch files publishes `/joystick_cartesian_command`
 (`geometry_msgs/msg/TwistStamped`) for `cartesian_manager`.
@@ -38,7 +38,12 @@ The mapper started by the launch files publishes `/joystick_cartesian_command`
 - `normalization_mode`: `axis` for independent component ramps or `vector`
   for direction-preserving magnitude normalization (default: `vector`)
 - `landmark_index`: Which landmark to track - 0=wrist, 8=index finger tip, 9=middle finger MCP (default: 8)
-- `lost_hand_cooldown_sec`: Time without valid hand landmarks before the node publishes a zero command and waits to recenter (default: `0.2`)
+- `lost_hand_cooldown_sec`: Time without valid hand landmarks before the node publishes one zero command; valid input resumes using the existing reference (default: `0.2`)
+
+These are the node's built-in defaults. The launch files load their YAML
+configuration instead: USB/video use `saturation_zone: 0.4` and
+`landmark_index: 0`; OAK uses `dead_zone: 0.02`, `saturation_zone: 0.25`,
+`normalization_mode: axis`, and `landmark_index: 0`.
 
 **Output Behavior:**
 - Output is normalized between -1 and +1 in `Joy.axes`, in landmark XYZ order
@@ -61,6 +66,39 @@ The hand_landmarks_node.py publishes 21 landmarks per hand:
 Webcam landmarks are image-normalized; OAK landmarks are published as
 reference-relative RGB-camera coordinates in meters. Dead-zone and saturation
 mapping are applied by the joystick consumer.
+
+## Prerequisites and Build
+
+The supported environment is Ubuntu 24.04, ROS 2 Jazzy, and Python 3.12.
+First follow the [MediaPipe environment setup](../../tools/mediapipe_mocap/README.md#environment)
+to create `.venv_mediapipe`, install the constrained MediaPipe/DepthAI Python
+dependencies, and install the ROS USB camera driver when using a webcam.
+`colcon build` does not install those Python dependencies. Keep the documented
+NumPy 1.x constraints for compatibility with ROS Jazzy extensions.
+
+Build the hand pipeline and its workspace dependencies:
+
+```bash
+cd /home/emoullet/dev/extender_workspace
+source /opt/ros/jazzy/setup.bash
+source .venv_mediapipe/bin/activate
+colcon build --packages-up-to hand_joystick_interfaces \
+  --cmake-args -DBUILD_TESTING=ON -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+```
+
+Before running any launch, inspection, or test command below, prepare **each
+terminal** with:
+
+```bash
+cd /home/emoullet/dev/extender_workspace
+source /opt/ros/jazzy/setup.bash
+source .venv_mediapipe/bin/activate
+source install/setup.bash
+```
+
+See [robot integration](#mapper-and-cartesian-manager-integration) for the
+additional build required to launch `cartesian_manager` and the robot stack.
 
 ## Usage
 
@@ -158,7 +196,11 @@ and normalization settings passed to the joystick consumer.
 
 ### Complete System Launch
 
-Alternatively, start components separately.
+Alternatively, start components separately in three prepared terminals.
+The combined video launch above is preferred because it mirrors the consumer
+control settings to the producer overlay automatically. With separate nodes,
+keep the explicit overlay values below aligned with the consumer YAML whenever
+you change its configuration.
 
 First, start the offline video publisher:
 
@@ -173,7 +215,12 @@ In another terminal, start the MediaPipe hand landmarks node:
 
 ```bash
 ros2 run mediapipe_mocap hand_landmarks_node --ros-args \
-	--params-file "$(ros2 pkg prefix mediapipe_mocap)/share/mediapipe_mocap/config/hand_landmarks_node.yaml"
+  --params-file "$(ros2 pkg prefix mediapipe_mocap)/share/mediapipe_mocap/config/hand_landmarks_node.yaml" \
+  --params-file "$(ros2 pkg prefix hand_joystick_interfaces)/share/hand_joystick_interfaces/config/explorer_hand_parameters.yaml" \
+  -p overlay_dead_zone:=0.05 \
+  -p overlay_saturation_zone:=0.4 \
+  -p overlay_normalization_mode:=vector \
+  -p tracked_landmark_index:=0
 ```
 
 Then start the hand joystick interface:
@@ -182,21 +229,16 @@ Then start the hand joystick interface:
 ros2 launch hand_joystick_interfaces hand_joystick_launch.py
 ```
 
-### Building
-
-```bash
-cd ~/extender_workspace
-colcon build --packages-up-to hand_joystick_interfaces
-source install/setup.bash
-```
-
 ### Running
+
+Running the executable directly publishes raw `/hand_joy` only. It requires a
+landmark producer and a separately started mapper for Cartesian output:
 
 ```bash
 ros2 run hand_joystick_interfaces hand_joystick_node
 ```
 
-Or with a launch file:
+To start the hand consumer and mapper together (a landmark producer is still required):
 
 ```bash
 ros2 launch hand_joystick_interfaces hand_joystick_launch.py
@@ -204,10 +246,16 @@ ros2 launch hand_joystick_interfaces hand_joystick_launch.py
 
 ### Monitoring Output
 
-View the normalized joystick output:
+Inspect raw normalized axes in one prepared terminal:
 
 ```bash
 ros2 topic echo /hand_joy
+```
+
+Inspect the mapped command in another prepared terminal, or stop the previous
+`echo` with Ctrl+C first:
+
+```bash
 ros2 topic echo /joystick_cartesian_command
 ```
 
@@ -248,7 +296,6 @@ Edit the configuration files in the `config/` directory to customize the behavio
 
 - rclcpp
 - geometry_msgs
-- std_msgs
 - sensor_msgs
 - joystick_mapper
 
@@ -287,14 +334,33 @@ All four hand launches accept:
 
 The consumer parameters `joy_output_topic` and `cartesian_command_topic`
 default to `/hand_joy` and `/joystick_cartesian_command`. The latter selects the
-mapped command used by the optional RViz marker. Existing marker appearance
-parameters remain available. If you change topics in custom YAML, update both
-the consumer and mapper configurations to match.
+mapped command used by the optional RViz marker. Marker settings are
+`cartesian_command_marker_topic`, `cartesian_command_marker_frame_id`, and
+`cartesian_command_marker_scale_x`, `_y`, `_z`. The default RViz topic is
+`/cartesian_command_marker` and its marker namespace is `cartesian_command`.
+If you change topics in custom YAML, update both the consumer and mapper
+configurations to match.
 
 For an existing standalone manager, start any hand pipeline with its defaults;
 the manager's enabled joystick input should consume `/joystick_cartesian_command`.
 
-Explorer bringup already starts a mapper. Give it the hand configuration:
+For Explorer bringup, also build the manager and its workspace dependencies:
+
+```bash
+cd /home/emoullet/dev/extender_workspace
+source /opt/ros/jazzy/setup.bash
+source .venv_mediapipe/bin/activate
+colcon build --packages-up-to cartesian_manager hand_joystick_interfaces \
+  --cmake-args -DBUILD_TESTING=ON -DPython3_EXECUTABLE=/usr/bin/python3
+source install/setup.bash
+```
+
+Restart running hand/mapper/manager nodes after rebuilding so they use the new
+installation; source `install/setup.bash` again in each terminal. No web page
+refresh is required.
+
+Explorer bringup already starts a mapper. In a prepared terminal, give it the
+hand configuration:
 
 ```bash
 ros2 launch cartesian_manager explorer.launch.py use_simulation:=true \
@@ -308,17 +374,60 @@ ros2 launch hand_joystick_interfaces usb_cam_hand_joystick_launch.py start_mappe
 # Or: oak_hand_joystick_launch.py / test_video_2d_hand_joystick_launch.py
 ```
 
-Use `use_simulation:=false` for the existing hardware bringup. Its physical
+Use `use_simulation:=false` for the existing hardware bringup, with the robot
+connected and its `can0` interface already configured. Its physical
 `joy_node` may remain running, but the mapper now subscribes to `/hand_joy`.
 Do not start another mapper publishing the same Cartesian joystick topic.
 
-### Migration from TeleopCommand
+## Validation
 
-`/teleop_cmd` and `extender_msgs/TeleopCommand` output have been removed.
-`teleop_cmd_output_topic`, `translation_axes_order`, and `translation_axes_factor`
-are no longer hand-node parameters. Configure output with `joy_output_topic`;
-configure axis indexes/scales in the mapper's named translation mode.
-Legacy `fractional_teleoperation` launches expecting `TeleopCommand` require
-migration to the new manager/controller path; there is no legacy publisher.
-Running `hand_joystick_node` directly produces only raw Joy and requires a
-separately launched mapper for Cartesian output.
+### Automated checks without camera or robot
+
+After the build above, run from a prepared terminal:
+
+```bash
+cd /home/emoullet/dev/extender_workspace
+colcon test --packages-select hand_joystick_interfaces joystick_mapper \
+  --event-handlers console_direct+
+colcon test-result --verbose
+```
+
+These checks cover normalization, parameter descriptions, installed launch
+configuration and overlay mirroring, plus synthetic landmark-to-Cartesian
+commands, tracking loss/recovery, and markers. The ROS integration tests need
+local DDS communication. They do not validate camera detection, robot
+connectivity, or robot motion.
+
+### Manual pipeline and robot checks
+
+Launch exactly one USB, OAK, or video pipeline. Use `start_mapper:=false` when
+the robot bringup already starts the mapper. In separate prepared terminals,
+inspect the topics described above. Check that:
+
+- `/hand_joy` contains three normalized XYZ axes and an empty button array.
+- `/joystick_cartesian_command` has linear axes `[axis 0, axis 2, -axis 1]`,
+  zero angular components, and frame `base_link` with the default hand mapper.
+- The dead zone gives zero output; increasing displacement reaches saturation.
+- Removing the hand causes one zero command after `lost_hand_cooldown_sec`
+  (normally `0.2` s, plus the watchdog timer interval). When tracking resumes,
+  commands use the existing reference; no automatic recenter is performed.
+- An explicit `/reset_reference` request recenters the producer on the next
+  valid hand frame. The overlay and mapped RViz marker agree with the commands.
+
+With the robot stack running, also inspect:
+
+```bash
+ros2 control list_controllers
+```
+
+Check that `qontrol_explorer`, `gripper_controller`, and
+`joint_state_broadcaster` are `active`, then inspect the manager output in
+another prepared terminal:
+
+```bash
+ros2 topic echo /cartesian_command
+```
+
+The manager may shape or rate-limit this output, so it need not equal the raw
+mapper command. Validate commanded directions and the stop on tracking loss
+in simulation before checking the same behavior on the real robot.

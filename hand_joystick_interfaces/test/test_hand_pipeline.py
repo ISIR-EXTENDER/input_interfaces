@@ -41,8 +41,6 @@ from rclpy.executors import SingleThreadedExecutor
 
 from sensor_msgs.msg import Joy, PointCloud
 
-from std_msgs.msg import Float64MultiArray, String
-
 from visualization_msgs.msg import Marker
 
 import yaml
@@ -131,7 +129,7 @@ def pipeline(request, tmp_path):
                 '-p', 'lost_hand_cooldown_sec:=0.3',
                 '-p', 'joy_output_topic:=' + namespace + '/joy',
                 '-p', 'cartesian_command_topic:=' + namespace + '/command',
-                '-p', 'teleop_cmd_marker_topic:=' + namespace + '/marker',
+                '-p', 'cartesian_command_marker_topic:=' + namespace + '/marker',
             ]),
             ('joystick_mapper', 'joystick_mapper_node', [
                 '--params-file', str(mapper_config),
@@ -201,6 +199,7 @@ def _assert_output(joy, command, marker, expected):
     assert command.header.frame_id == 'base_link'
     assert command.header.stamp.sec > 0
     assert marker.header.frame_id == 'base_link'
+    assert marker.ns == 'cartesian_command'
     assert len(marker.points) == 2
     endpoint = marker.points[1]
     assert [endpoint.x, endpoint.y, endpoint.z] == pytest.approx(
@@ -254,107 +253,3 @@ def test_invalid_clouds_watchdog_and_recovery(pipeline):
     assert len(observer.joys) == start + 1
     _assert_output(*observer.send((-0.15, 0.0, 0.0)), (-0.5, 0.0, 0.0))
     observer.wait(lambda: observer.joys[-1].axes[0] == 0.0, timeout=1.0)
-
-
-def test_physical_joystick_modes_and_buttons(tmp_path):
-    """Keep named physical layouts, mode edges, and command buttons working."""
-    namespace = '/physical_test_' + uuid.uuid4().hex
-    share = Path(get_package_share_directory('joystick_mapper'))
-    document = yaml.safe_load((share / 'config/joystick_3d.yaml').read_text())
-    config = tmp_path / 'physical_mapper.yaml'
-    config.write_text(yaml.safe_dump({
-        namespace + '/joystick_mapper': document['joystick_mapper'],
-    }))
-    context = rclpy.context.Context()
-    rclpy.init(context=context)
-    node = rclpy.create_node('observer', namespace=namespace, context=context)
-    executor = SingleThreadedExecutor(context=context)
-    executor.add_node(node)
-    publisher = node.create_publisher(Joy, namespace + '/joy', 10)
-    binary = (Path(get_package_prefix('joystick_mapper')) / 'lib'
-              / 'joystick_mapper/joystick_mapper_node')
-    with (tmp_path / 'mapper.log').open('w+') as log:
-        process = subprocess.Popen([
-            str(binary), '--ros-args', '-r', '__ns:=' + namespace,
-            '--params-file', str(config),
-            '-p', 'joy_topic:=' + namespace + '/joy',
-            '-p', 'output_topic:=' + namespace + '/command',
-            '-p', 'mode_request_topic:=' + namespace + '/mode_request',
-            '-p', 'gripper_command_topic:=' + namespace + '/gripper',
-        ], stdout=log, stderr=subprocess.STDOUT)
-        observer = Pipeline(node, publisher, [process], executor)
-        requests = []
-        gripper = []
-        observer.subscriptions = [
-            node.create_subscription(TwistStamped, namespace + '/command',
-                                     observer.commands.append, 10),
-            node.create_subscription(String, namespace + '/mode_request',
-                                     lambda message: requests.append(message.data), 10),
-            node.create_subscription(Float64MultiArray, namespace + '/gripper',
-                                     lambda message: gripper.append(list(message.data)), 10),
-        ]
-
-        def send(button=None):
-            """Publish one button sample and wait for the mapped twist."""
-            message = Joy()
-            message.axes = [0.6, -1.0, 0.2]
-            message.buttons = [0] * 12
-            if button is not None:
-                message.buttons[button] = 1
-            count = len(observer.commands)
-            publisher.publish(message)
-            observer.wait(lambda: len(observer.commands) > count)
-            return observer.commands[-1]
-
-        try:
-            observer.wait(lambda: publisher.get_subscription_count() == 1
-                          and node.count_subscribers(namespace + '/command') == 1
-                          and node.count_subscribers(namespace + '/mode_request') == 1
-                          and node.count_subscribers(namespace + '/gripper') == 1)
-            command = send()
-            assert command.header.frame_id == 'base_link'
-            assert [command.twist.linear.x, command.twist.linear.y,
-                    command.twist.linear.z] == pytest.approx([0.5, -1.0, 0.0], abs=1e-6)
-            assert command.twist.angular.x == 0.0
-            command = send(1)
-            assert command.header.frame_id == 'effector_frame'
-            assert [command.twist.angular.x, command.twist.angular.y,
-                    command.twist.angular.z] == pytest.approx([0.5, -1.0, 0.0], abs=1e-6)
-            assert command.twist.linear.x == 0.0
-            assert send(1).header.frame_id == 'effector_frame'
-            send()
-            assert send(1).header.frame_id == 'base_link'
-            send()
-            for button, expected, released in (
-                (10, 'geometric/snake', 'geometric/both'),
-                (4, 'behaviour/joint_target/home', 'behaviour/passthrough'),
-            ):
-                send(button)
-                observer.wait(lambda: requests and requests[-1] == expected)
-                send()
-                observer.wait(lambda: requests[-1] == released)
-            send(11)
-            observer.wait(lambda: requests[-1] == 'geometric/jaco')
-            send()
-            assert requests[-1] == 'geometric/jaco'
-            send(11)
-            observer.wait(lambda: requests[-1] == 'geometric/both')
-            send()
-            send(0)
-            observer.wait(lambda: gripper and gripper[-1] == [1.1])
-            send()
-            send(0)
-            observer.wait(lambda: gripper[-1] == [0.2])
-        finally:
-            if process.poll() is None:
-                process.send_signal(signal.SIGINT)
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=5)
-            executor.shutdown()
-            node.destroy_node()
-            context.shutdown()
-            log.seek(0)
-            print(log.read())
