@@ -1,3 +1,7 @@
+usb_cam:
+  ros__parameters:
+    video_device: "/dev/video0"  # Camera device path, or a stable /dev/v4l/by-id/ path
+
 hand_joystick_interface:
   ros__parameters:
     dead_zone: 0.05

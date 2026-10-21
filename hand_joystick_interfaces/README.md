@@ -124,8 +124,19 @@ ros2 launch hand_joystick_interfaces usb_cam_hand_joystick_launch.py \
 	show_control_overlay:=true
 ```
 
-Camera defaults are loaded from
-`mediapipe_mocap/config/usb_cam.yaml`. The optional `video_device`,
+Set the webcam device in `config/explorer_hand_parameters.yaml`:
+
+```yaml
+usb_cam:
+  ros__parameters:
+    video_device: "/dev/video0"
+```
+
+You can also use a stable device path under `/dev/v4l/by-id/`.
+Camera defaults are loaded from `mediapipe_mocap/config/usb_cam.yaml`, then
+overridden by the `usb_cam` section of the integration YAML selected with
+`config_file`. Explicit launch arguments take priority over both YAML files.
+The optional `video_device`,
 `framerate`, `image_width`, `image_height`, `pixel_format`, and `frame_id`
 arguments override individual YAML values.
 Overlay and joystick control arguments are optional overrides. When omitted,

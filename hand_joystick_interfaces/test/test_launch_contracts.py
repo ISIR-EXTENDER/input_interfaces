@@ -224,6 +224,43 @@ def test_usb_combined_launch_resolves_defaults_and_topic_wiring():
     _assert_control_mirror(producer, consumer)
 
 
+def test_usb_camera_device_parameter_precedence(tmp_path):
+    """Resolve camera defaults, integration YAML, and terminal precedence."""
+    camera_config = tmp_path / 'camera.yaml'
+    camera_config.write_text(yaml.safe_dump({'/**': {'ros__parameters': {
+        'video_device': '/dev/video5', 'framerate': 12.0,
+    }}}))
+    package_share = Path(get_package_share_directory(_PACKAGE_NAME))
+    document = yaml.safe_load(
+        (package_share / 'config/explorer_hand_parameters.yaml').read_text())
+    document['usb_cam']['ros__parameters']['video_device'] = '/dev/video9'
+    integration_config = tmp_path / 'hand.yaml'
+    integration_config.write_text(yaml.safe_dump(document))
+    overrides = {
+        'usb_cam_params_file': str(camera_config),
+        'config_file': str(integration_config),
+    }
+    cases = (
+        ({}, '/dev/video9'),
+        ({'video_device': '/dev/video7'}, '/dev/video7'),
+    )
+    for terminal, expected in cases:
+        context, nodes = _resolve_launch(
+            'usb_cam_hand_joystick_launch.py', {**overrides, **terminal})
+        camera = _effective_parameters(
+            _node_by_executable(nodes, 'usb_cam_node_exe'), context)
+        assert camera['video_device'] == expected
+        assert camera['framerate'] == 12.0
+
+    del document['usb_cam']
+    integration_config.write_text(yaml.safe_dump(document))
+    context, nodes = _resolve_launch(
+        'usb_cam_hand_joystick_launch.py', overrides)
+    camera = _effective_parameters(
+        _node_by_executable(nodes, 'usb_cam_node_exe'), context)
+    assert camera['video_device'] == '/dev/video5'
+
+
 def test_oak_combined_launch_resolves_defaults_and_control_mirror():
     """Resolve the metric producer and consumer defaults in memory."""
     context, nodes = _resolve_launch('oak_hand_joystick_launch.py')

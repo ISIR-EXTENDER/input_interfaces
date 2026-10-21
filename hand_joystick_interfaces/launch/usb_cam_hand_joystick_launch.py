@@ -124,6 +124,7 @@ def _launch_pipeline(context):
         output='screen',
         parameters=[
             LaunchConfiguration('usb_cam_params_file'),
+            LaunchConfiguration('config_file'),
             usb_cam_overrides,
         ],
         remappings=[
