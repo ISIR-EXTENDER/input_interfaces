@@ -1,0 +1,23 @@
+joystick_mapper:
+  ros__parameters:
+    joy_topic: "/hand_joy"
+    output_topic: "/joystick_cartesian_command"
+    mode_request_topic: "/mode_request"
+    # Hand displacement was already normalized with its dead zone applied.
+    deadzone: 0.0
+    modes:
+      names: [translation]
+      translation:
+        angular_output_frame_id: "base_link"
+        axes:
+          linear_x: {index: 0, scale: 1.0}
+          linear_y: {index: 2, scale: 1.0}
+          linear_z: {index: 1, scale: -1.0}
+          angular_x: {index: -1, scale: 1.0}
+          angular_y: {index: -1, scale: 1.0}
+          angular_z: {index: -1, scale: 1.0}
+    local_mode_button_index: -1
+    jaco_button_index: -1
+    snake_button_index: -1
+    home_button_index: -1
+    gripper_button_index: -1
