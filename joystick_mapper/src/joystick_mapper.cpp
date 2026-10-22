@@ -112,10 +112,20 @@ namespace joystick_mapper
     gripper_close_position_ = declare_parameter<double>("gripper_close_position", 1.1);
     const AxisMap disabled_axes{{-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}};
 
-    general_scale_ = declare_parameter<double>("general_scale", 0.4);
     increment_general_scale_ = declare_parameter<double>("increment_general_scale", 0.2);
+    if (increment_general_scale_ < 0.05) increment_general_scale_ = 0.05; 
+
     max_general_scale_ = declare_parameter<double>("max_general_scale", 1.0);
-    min_general_scale_ = declare_parameter<double>("min_general_scale", 0.2);
+    if (max_general_scale_ < 0.1) max_general_scale_ = 0.1; 
+    if (max_general_scale_ > 1.0) max_general_scale_ = 1.0; 
+
+    min_general_scale_ = declare_parameter<double>("min_general_scale", 0.1);
+    if (min_general_scale_ > max_general_scale_) min_general_scale_ = max_general_scale_;
+    if (min_general_scale_ < 0.1) min_general_scale_ = 0.1;
+
+    general_scale_ = declare_parameter<double>("general_scale", 0.4);
+    if (general_scale_ > max_general_scale_) general_scale_ = max_general_scale_;
+    if (general_scale_ < min_general_scale_) general_scale_ = min_general_scale_;
 
     debug_ = declare_parameter<bool>("debug", false);
 
