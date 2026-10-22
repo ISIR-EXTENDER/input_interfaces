@@ -112,6 +112,11 @@ namespace joystick_mapper
     gripper_close_position_ = declare_parameter<double>("gripper_close_position", 1.1);
     const AxisMap disabled_axes{{-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}, {-1, 1.0}};
 
+    general_scale_ = declare_parameter<double>("general_scale", 0.4);
+    increment_general_scale_ = declare_parameter<double>("increment_general_scale", 0.2);
+    max_general_scale_ = declare_parameter<double>("max_general_scale", 1.0);
+    min_general_scale_ = declare_parameter<double>("min_general_scale", 0.2);
+
     debug_ = declare_parameter<bool>("debug", false);
 
     const auto requested_mode_names =
@@ -146,8 +151,12 @@ namespace joystick_mapper
         declareButton("local_mode_button_index", -1, ButtonActivationMode::TOGGLE);
     jaco_button_ = declareButton("jaco_button_index", -1, ButtonActivationMode::TOGGLE);
     snake_button_ = declareButton("snake_button_index", -1, ButtonActivationMode::TOGGLE);
-    home_button_ = declareButton("home_button_index", -1, ButtonActivationMode::TRIGGER);
+    home_button_ = declareButton("home_button_index", -1, ButtonActivationMode::HOLD);
+    wrist_return_button_ = declareButton("wrist_return_button_index", -1, ButtonActivationMode::HOLD);
     gripper_button_ = declareButton("gripper_button_index", -1, ButtonActivationMode::TOGGLE);
+    scale_increase_button_ = declareButton("scale_increase_button_index", -1, ButtonActivationMode::TRIGGER); 
+    scale_decrease_button_ = declareButton("scale_decrease_button_index", -1, ButtonActivationMode::TRIGGER); 
+    
     warnOnDuplicateButtonIndexes();
 
     if (deadzone_ < 0.0 || deadzone_ >= 1.0)
@@ -265,6 +274,8 @@ namespace joystick_mapper
         {"snake_button_index", snake_button_.button_index},
         {"home_button_index", home_button_.button_index},
         {"gripper_button_index", gripper_button_.button_index},
+        {"scale_increase_button_index", scale_increase_button_.button_index},
+        {"scale_decrease_button_index", scale_decrease_button_.button_index}
     };
 
     for (std::size_t i = 0; i < buttons.size(); ++i)
@@ -309,7 +320,7 @@ namespace joystick_mapper
   double JoystickMapper::mappedAxis(const sensor_msgs::msg::Joy &msg,
                                     const AxisBinding &binding) const
   {
-    return binding.scale *
+    return general_scale_*binding.scale *
            signal_processing::applyScaledDeadZone(axis(msg, binding.index), deadzone_, 1.0);
   }
 
@@ -335,6 +346,8 @@ namespace joystick_mapper
                       kGeometricBoth, kGeometricScope);
     handleCommandButton(msg, home_button_, kHomeRequest, kPassthroughRequest);
     handleGripperButton(msg);
+    handleScaleIncreaseButton(msg);
+    handleScaleDecreaseButton(msg);
   }
 
   void JoystickMapper::handleLocalModeButton(const sensor_msgs::msg::Joy &msg)
@@ -450,6 +463,33 @@ namespace joystick_mapper
       }
     }
     button.previous_button_pressed = pressed;
+  }
+
+  void JoystickMapper::handleScaleIncreaseButton(const sensor_msgs::msg::Joy &msg)
+  {
+    const bool pressed = isButtonPressed(msg, scale_increase_button_.button_index);
+
+    if (pressed && ( scale_increase_button_.activation_mode == ButtonActivationMode::TRIGGER ) && !scale_increase_button_.previous_button_pressed)
+    {
+      general_scale_ = std::min(max_general_scale_, general_scale_+increment_general_scale_); 
+      std::cout << "General scale is now : " << general_scale_ << std::endl;
+    }
+
+    scale_increase_button_.previous_button_pressed = pressed;
+  }
+
+  void JoystickMapper::handleScaleDecreaseButton(const sensor_msgs::msg::Joy &msg)
+  {
+    const bool pressed = isButtonPressed(msg, scale_decrease_button_.button_index);
+
+    if (pressed && ( scale_decrease_button_.activation_mode == ButtonActivationMode::TRIGGER ) && !scale_decrease_button_.previous_button_pressed)
+    {
+      general_scale_ = std::max(min_general_scale_, general_scale_-increment_general_scale_); 
+      std::cout << "General scale is now : " << general_scale_ << std::endl;
+
+    }
+
+    scale_decrease_button_.previous_button_pressed = pressed;
   }
 
   void JoystickMapper::handleGripperButton(const sensor_msgs::msg::Joy &msg)
