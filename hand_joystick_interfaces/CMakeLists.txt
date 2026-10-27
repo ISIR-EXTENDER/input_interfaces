@@ -98,7 +98,8 @@ install(FILES LICENSE
   DESTINATION share/${PROJECT_NAME}
 )
 
-if(BUILD_TESTING)
+# Tests are local-only and may be absent from a checkout.
+if(BUILD_TESTING AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/test")
   find_package(ament_cmake_gtest REQUIRED)
   find_package(ament_cmake_pytest REQUIRED)
   find_package(ament_lint_auto REQUIRED)

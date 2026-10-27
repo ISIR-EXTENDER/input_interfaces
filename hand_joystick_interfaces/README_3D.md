@@ -4,9 +4,8 @@ The OAK-D pipeline reconstructs hand landmarks in RGB-camera coordinates,
 relative to a reference, in meters. The hand joystick node normalizes the
 displacement and the mapper converts it to Cartesian translation.
 
-Use the main README for [setup and build](README.md#setup-and-build),
-[robot bringup](README.md#connect-to-explorer), and
-[validation](README.md#validate).
+Use the main README for [setup and build](README.md#setup-and-build) and
+[robot bringup](README.md#connect-to-explorer).
 
 ## Start
 

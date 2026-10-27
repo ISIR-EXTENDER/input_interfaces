@@ -22,7 +22,7 @@ cd /home/emoullet/dev/extender_workspace
 source /opt/ros/jazzy/setup.bash
 source .venv_mediapipe/bin/activate
 colcon build --packages-up-to hand_joystick_interfaces \
-  --cmake-args -DBUILD_TESTING=ON -DPython3_EXECUTABLE=/usr/bin/python3
+  --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
 ```
 
@@ -129,7 +129,7 @@ Build the manager and its dependencies from a prepared terminal:
 
 ```bash
 colcon build --packages-up-to cartesian_manager hand_joystick_interfaces \
-  --cmake-args -DBUILD_TESTING=ON -DPython3_EXECUTABLE=/usr/bin/python3
+  --cmake-args -DPython3_EXECUTABLE=/usr/bin/python3
 source install/setup.bash
 ```
 
@@ -184,41 +184,3 @@ ros2 topic pub /reset_reference std_msgs/msg/Bool "{data: true}" --once
 
 MediaPipe owns the reference. Reset requests are rate-limited by
 `reset_reference_cooldown_sec` (default `0.25` s).
-
-## Validate
-
-Run automated checks from a prepared terminal after building with
-`BUILD_TESTING=ON`:
-
-```bash
-colcon test --packages-select hand_joystick_interfaces \
-  --event-handlers console_direct+
-colcon test-result --verbose
-```
-
-These tests cover normalization, launch configuration, overlay settings, and
-synthetic hand-to-mapper commands, including tracking loss and recovery. They
-need local ROS DDS communication but no camera or robot.
-
-With a camera, check that movement produces translation, the dead zone gives
-zero output, and removing the hand produces one zero command after the
-configured timeout plus the watchdog timer interval. Verify the mapped arrow
-and the explicit reference reset. Camera detection and physical robot motion
-require manual testing.
-
-With the robot stack running, check controller state:
-
-```bash
-ros2 control list_controllers
-```
-
-`qontrol_explorer`, `gripper_controller`, and `joint_state_broadcaster` should
-be `active`. In another terminal, inspect the manager output:
-
-```bash
-ros2 topic echo /cartesian_command
-```
-
-The manager can shape and rate-limit commands, so its output may differ from
-the mapper output. Check directions and stopping behavior in simulation before
-repeating the checks on the real robot.
