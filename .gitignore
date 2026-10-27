@@ -22,3 +22,6 @@ data/*
 rosbag*
 
 log/
+
+# Hand joystick local tests
+/hand_joystick_interfaces/test/

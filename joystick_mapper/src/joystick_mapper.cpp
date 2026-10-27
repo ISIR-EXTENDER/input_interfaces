@@ -364,7 +364,7 @@ namespace joystick_mapper
     {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
                            "Active joystick axesmode: %s", mode_names_[active_mode_index_].c_str());
-    } 
+    }
   }
 
   void JoystickMapper::handleStateButton(
