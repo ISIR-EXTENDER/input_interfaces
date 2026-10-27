@@ -10,7 +10,7 @@ hand_joystick_interface:
     landmark_index: 0  # 0=wrist, 8=index finger tip, 9=middle finger MCP
     output_round_decimals: 2
     joy_output_topic: "/hand_joy"
-    cartesian_command_topic: "/joystick_cartesian_command"
+    cartesian_command_topic: "/hand_joystick_cartesian_command"
     enable_marker_visualization: true  # Set to false to disable RViz marker visualization
     cartesian_command_marker_topic: "cartesian_command_marker"
     cartesian_command_marker_frame_id: "base_link"

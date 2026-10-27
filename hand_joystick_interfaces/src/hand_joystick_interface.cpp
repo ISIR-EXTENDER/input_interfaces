@@ -63,7 +63,7 @@ HandJoystickInterface::HandJoystickInterface()
     parameterDescriptor("joy_output_topic"));
   this->declare_parameter(
     "cartesian_command_topic",
-    "/joystick_cartesian_command",
+    "/hand_joystick_cartesian_command",
     parameterDescriptor("cartesian_command_topic"));
   this->declare_parameter(
     "cartesian_command_marker_topic",

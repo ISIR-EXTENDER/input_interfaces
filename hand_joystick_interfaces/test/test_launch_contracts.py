@@ -196,7 +196,7 @@ def test_consumer_only_launch_resolves_default_configuration():
     assert consumer['normalization_mode'] == 'vector'
     assert consumer['landmark_index'] == 0
     assert consumer['joy_output_topic'] == '/hand_joy'
-    assert consumer['cartesian_command_topic'] == '/joystick_cartesian_command'
+    assert consumer['cartesian_command_topic'] == '/hand_joystick_cartesian_command'
 
 
 def test_usb_combined_launch_resolves_defaults_and_topic_wiring():
@@ -357,7 +357,7 @@ def test_hand_mapper_configuration_and_topics():
             _node_by_executable(nodes, 'joystick_mapper_node'), context)
         assert mapper['joy_topic'] == consumer['joy_output_topic']
         assert mapper['output_topic'] == consumer['cartesian_command_topic']
-        assert mapper['output_topic'] == '/joystick_cartesian_command'
+        assert mapper['output_topic'] == '/hand_joystick_cartesian_command'
         assert mapper['deadzone'] == 0.0
         assert mapper['modes.names'] == ['translation']
         frame = mapper['modes.translation.angular_output_frame_id']

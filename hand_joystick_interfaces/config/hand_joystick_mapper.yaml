@@ -1,7 +1,7 @@
 joystick_mapper:
   ros__parameters:
     joy_topic: "/hand_joy"
-    output_topic: "/joystick_cartesian_command"
+    output_topic: "/hand_joystick_cartesian_command"
     mode_request_topic: "/mode_request"
     # Hand displacement was already normalized with its dead zone applied.
     deadzone: 0.0

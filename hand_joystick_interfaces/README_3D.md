@@ -14,7 +14,7 @@ OAK-D RGBD camera
   -> hand_joystick_interfaces/hand_joystick_node
   -> /hand_joy (sensor_msgs/Joy)
   -> joystick_mapper/joystick_mapper_node
-  -> /joystick_cartesian_command (geometry_msgs/TwistStamped)
+  -> /hand_joystick_cartesian_command (geometry_msgs/TwistStamped)
   -> cartesian_manager
 ```
 
@@ -127,7 +127,7 @@ No `/hand_landmarks` output:
 - Confirm the OAK camera is available and depth is aligned to RGB.
 - Check the producer log for invalid or missing depth samples.
 
-No `/joystick_cartesian_command` movement:
+No `/hand_joystick_cartesian_command` movement:
 
 - Confirm `/hand_landmarks` contains 21 points.
 - Check `landmark_index`, `/hand_joy`, and the mapper axis indexes/signs.
@@ -156,7 +156,8 @@ mapper deadzone is zero to avoid applying it twice.
 
 Use `mapper_config_file:=/absolute/path/to/mapper.yaml` to change robot mapping.
 Use `start_mapper:=false` when Explorer bringup already owns the mapper, and
-pass the hand mapper YAML as its `joystick_config_file`.
+pass the hand mapper YAML as its `joystick_config_file`. The manager has a
+dedicated `hand_joystick` input on `/hand_joystick_cartesian_command`.
 See the main README for complete manager integration commands.
 
 ## Validation and Robot Bringup

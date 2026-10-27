@@ -29,7 +29,7 @@ Subscribes to hand landmark data from `mediapipe_mocap` and publishes normalized
 - `/hand_joy` (`sensor_msgs/msg/Joy`) - Three normalized landmark XYZ axes; no buttons
 - `/cartesian_command_marker` (`visualization_msgs/msg/Marker`) - Mapped translation arrow, when enabled
 
-The mapper started by the launch files publishes `/joystick_cartesian_command`
+The mapper started by the launch files publishes `/hand_joystick_cartesian_command`
 (`geometry_msgs/msg/TwistStamped`) for `cartesian_manager`.
 
 **Parameters:**
@@ -267,7 +267,7 @@ Inspect the mapped command in another prepared terminal, or stop the previous
 `echo` with Ctrl+C first:
 
 ```bash
-ros2 topic echo /joystick_cartesian_command
+ros2 topic echo /hand_joystick_cartesian_command
 ```
 
 The raw `Joy.axes` values are normalized XYZ displacement. The mapped output
@@ -320,7 +320,7 @@ hand_landmarks (PointCloud)
   -> hand_joystick_node
   -> /hand_joy (Joy)
   -> joystick_mapper_node
-  -> /joystick_cartesian_command (TwistStamped)
+  -> /hand_joystick_cartesian_command (TwistStamped)
   -> cartesian_manager
   -> /cartesian_command
 ```
@@ -344,7 +344,7 @@ All four hand launches accept:
 - `mapper_config_file:=/absolute/path/to/mapper.yaml`: override the mapper config.
 
 The consumer parameters `joy_output_topic` and `cartesian_command_topic`
-default to `/hand_joy` and `/joystick_cartesian_command`. The latter selects the
+default to `/hand_joy` and `/hand_joystick_cartesian_command`. The latter selects the
 mapped command used by the optional RViz marker. Marker settings are
 `cartesian_command_marker_topic`, `cartesian_command_marker_frame_id`, and
 `cartesian_command_marker_scale_x`, `_y`, `_z`. The default RViz topic is
@@ -353,7 +353,8 @@ If you change topics in custom YAML, update both the consumer and mapper
 configurations to match.
 
 For an existing standalone manager, start any hand pipeline with its defaults;
-the manager's enabled joystick input should consume `/joystick_cartesian_command`.
+the manager's enabled `hand_joystick` input should consume
+`/hand_joystick_cartesian_command`.
 
 For Explorer bringup, also build the manager and its workspace dependencies:
 
@@ -370,8 +371,9 @@ Restart running hand/mapper/manager nodes after rebuilding so they use the new
 installation; source `install/setup.bash` again in each terminal. No web page
 refresh is required.
 
-Explorer bringup already starts a mapper. In a prepared terminal, give it the
-hand configuration:
+Explorer bringup already starts a mapper. Its manager configuration declares
+a dedicated `hand_joystick` input on `/hand_joystick_cartesian_command`.
+In a prepared terminal, give the mapper the hand configuration:
 
 ```bash
 ros2 launch cartesian_manager explorer.launch.py use_simulation:=true \
@@ -416,7 +418,7 @@ the robot bringup already starts the mapper. In separate prepared terminals,
 inspect the topics described above. Check that:
 
 - `/hand_joy` contains three normalized XYZ axes and an empty button array.
-- `/joystick_cartesian_command` has linear axes `[axis 0, axis 2, -axis 1]`,
+- `/hand_joystick_cartesian_command` has linear axes `[axis 0, axis 2, -axis 1]`,
   zero angular components, and frame `base_link` with the default hand mapper.
 - The dead zone gives zero output; increasing displacement reaches saturation.
 - Removing the hand causes one zero command after `lost_hand_cooldown_sec`
