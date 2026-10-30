@@ -439,7 +439,7 @@ void VisualServoing::sat (
     }
 
     norme_angular = float(std::sqrt(omega_c[0]*omega_c[0] + omega_c[1]*omega_c[1] + omega_c[2]*omega_c[2]));
-    if (norme_linear > v_max_max){
+    if (norme_angular > omega_max_max){
         for (int i = 0; i < 3; i++) {
             v_c[i] = v_c[i] * (omega_max_max/norme_angular);
             omega_c[i] = omega_c[i] * (omega_max_max/norme_angular);
