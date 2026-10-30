@@ -1,12 +1,11 @@
 visual_servoing:
   ros__parameters:
-    lambda: 1.0
+    lambda: 1.2
     robot_type: "explorer"
     camera_type: "camera_usb"
     tolerance_linear: 0.01
-    tolerance_angular: 0.1
+    tolerance_angular: 0.05
     topic_visual_servoing_on : "/ui/visual_servoing/on"
     topic_visual_servoing_save : "/ui/visual_servoing/save"
     topic_visual_servoing_clear : "/ui/visual_servoing/clear"
-    #common-config: !include saved_tag_goals.yaml
     
