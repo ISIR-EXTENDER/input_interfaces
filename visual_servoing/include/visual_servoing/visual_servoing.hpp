@@ -161,5 +161,9 @@ private:
   // get qontrol_controller v_max param
   double command_max_linear_velocity_;
   double command_max_angular_velocity_;
-
+  
+  geometry_msgs::msg::TwistStamped vel_to_pub_;
+  Eigen::Vector3d velocity_of_ee_in_b_;
+  Eigen::Vector3d omega_of_ee_in_b_;
+  
 };
