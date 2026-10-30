@@ -167,5 +167,7 @@ private:
   geometry_msgs::msg::TwistStamped vel_to_pub_;
   Eigen::Vector3d velocity_of_ee_in_b_;
   Eigen::Vector3d omega_of_ee_in_b_;
+  Eigen::Vector3d old_velocity_of_ee_in_b_;
+  Eigen::Vector3d old_omega_of_ee_in_b_;
   
 };

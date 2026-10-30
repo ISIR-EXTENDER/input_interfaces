@@ -77,6 +77,10 @@ void VisualServoing::initVariables()
     r_CAMtoTAGd.y() = 0;
     r_CAMtoTAGd.z() = 0;
     r_CAMtoTAGd.w() = 0;
+    old_velocity_of_ee_in_b_.resize(3);
+    old_velocity_of_ee_in_b_.setZero();
+    old_omega_of_ee_in_b_.resize(3);
+    old_omega_of_ee_in_b_.setZero();
 }
 
 void VisualServoing::setupPublishers()
@@ -579,7 +583,12 @@ void VisualServoing::timer_callback(){
         // Scaling between -1.0 and 1.0
         velocity_of_ee_in_b_ = velocity_of_ee_in_b_ / v_max_max;
         omega_of_ee_in_b_ = omega_of_ee_in_b_ / omega_max_max;
-        omega_of_ee_in_b = omega_of_ee_in_b / omega_max_max;
+
+        velocity_of_ee_in_b_ = 0.9 * old_velocity_of_ee_in_b_ + 0.1* velocity_of_ee_in_b_;
+        omega_of_ee_in_b_ = 0.9 * old_omega_of_ee_in_b_ + 0.1 * omega_of_ee_in_b_;
+
+        old_velocity_of_ee_in_b_ = velocity_of_ee_in_b_;
+        old_omega_of_ee_in_b_ = omega_of_ee_in_b_;
 
         float error_position;
         error_position = abs(velocity_of_ee_in_b_[0]) + abs(velocity_of_ee_in_b_[1]) + abs(velocity_of_ee_in_b_[2]);
