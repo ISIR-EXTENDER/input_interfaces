@@ -132,6 +132,8 @@ private:
   std::string topic_visual_servoing_on;
   std::string topic_visual_servoing_save;
   std::string topic_visual_servoing_clear;
+  std::string ee_frame_;
+  std::string camera_frame_;
   TransformHelper EEtoCAM;      // param #2 - calibration saved on yaml file
   TransformHelper CAMtoTAGd;  // param #3 - Apriltag saved on yaml file
   Eigen::Vector3d t_CAMtoTAGd;
