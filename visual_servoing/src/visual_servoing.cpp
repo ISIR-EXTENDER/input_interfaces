@@ -576,8 +576,8 @@ void VisualServoing::timer_callback(){
         omega_of_ee_in_b_ = ( (BtoEE.orientation*EEtoCAM.orientation)*(-omega_of_tagEtag_in_cam) );
         
         // Saturation
-        float v_max_max = command_max_linear_velocity_;                                                       // 0.2
-        float characteristic_lenght = 0.5;                                                                    // 0.5
+        float v_max_max = command_max_linear_velocity_;
+        float omega_max_max = command_max_angular_velocity_;
         sat(velocity_of_ee_in_b_, omega_of_ee_in_b_, v_max_max,omega_max_max);
         
         // Scaling between -1.0 and 1.0
