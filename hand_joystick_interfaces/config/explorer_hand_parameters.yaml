@@ -4,7 +4,7 @@ usb_cam:
 
 hand_joystick_interface:
   ros__parameters:
-    dead_zone: 0.05
+    dead_zone: 0.0
     saturation_zone: 0.4  # XYZ distance from reference where output saturates at ±1
     normalization_mode: "vector"
     landmark_index: 0  # 0=wrist, 8=index finger tip, 9=middle finger MCP

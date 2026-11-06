@@ -1,6 +1,6 @@
 hand_joystick_interface:
   ros__parameters:
-    dead_zone: 0.02
+    dead_zone: 0.0
     saturation_zone: 0.25  # XYZ joystick distance where output saturates at +/-1
     normalization_mode: "axis"
     landmark_index: 0  # 0=wrist, 8=index finger tip, 9=middle finger MCP
