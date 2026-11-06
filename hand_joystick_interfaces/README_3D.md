@@ -18,6 +18,22 @@ ros2 launch hand_joystick_interfaces oak_hand_joystick_launch.py \
 
 If Explorer bringup already starts the mapper, add `start_mapper:=false`.
 
+### Depth map
+
+To show the RGB-aligned depth map in a separate OpenCV window:
+
+```bash
+ros2 launch hand_joystick_interfaces oak_hand_joystick_launch.py \
+  visualize_depth:=true
+```
+
+The map is disabled by default. Add `visualize:=false` to show only the depth
+window. The display requires a graphical desktop; `q` or Escape stops the node.
+Colors use the fixed `min_depth_m` to `max_depth_m` range from the OAK YAML;
+invalid and out-of-range pixels are black. These limits also control the depth
+samples accepted for hand tracking. The depth image is internal to the producer
+and is not published as a ROS image topic.
+
 ## Configuration
 
 Hand control settings are in
@@ -66,6 +82,7 @@ send an [explicit reset](README.md#inspect-and-recenter).
 | Symptom | Check |
 | --- | --- |
 | No `/hand_landmarks` | Camera connection, producer logs, depth alignment, and valid depth samples. |
+| Depth map is black | Check the camera view and the configured `min_depth_m` and `max_depth_m` range. |
 | Landmarks arrive but no `/hand_joy` | Exactly 21 points, selected landmark, and hand-node logs. |
 | Joy arrives but no `/hand_joystick_cartesian_command` | Mapper running and subscribed to `/hand_joy`. |
 | Zero commands while the hand moves | Displacement relative to the reference, `dead_zone`, and `saturation_zone`. |
