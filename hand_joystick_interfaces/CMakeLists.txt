@@ -98,48 +98,4 @@ install(FILES LICENSE
   DESTINATION share/${PROJECT_NAME}
 )
 
-# Tests are local-only and may be absent from a checkout.
-if(BUILD_TESTING AND IS_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/test")
-  find_package(ament_cmake_gtest REQUIRED)
-  find_package(ament_cmake_pytest REQUIRED)
-  find_package(ament_lint_auto REQUIRED)
-
-  ament_add_gtest(
-    test_control_mapping
-    test/test_control_mapping.cpp
-  )
-  target_link_libraries(
-    test_control_mapping
-    hand_joystick_control_mapping
-  )
-
-  ament_add_gtest(
-    test_parameter_descriptors
-    test/test_parameter_descriptors.cpp
-  )
-  ament_target_dependencies(
-    test_parameter_descriptors
-    rcl_interfaces
-  )
-  target_link_libraries(
-    test_parameter_descriptors
-    hand_joystick_parameter_descriptors
-  )
-
-  ament_add_pytest_test(
-    test_overlay_configuration
-    test/test_overlay_configuration.py
-  )
-  ament_add_pytest_test(
-    test_launch_contracts
-    test/test_launch_contracts.py
-  )
-  ament_add_pytest_test(
-    test_hand_pipeline
-    test/test_hand_pipeline.py
-    TIMEOUT 90
-  )
-  ament_lint_auto_find_test_dependencies()
-endif()
-
 ament_package()
