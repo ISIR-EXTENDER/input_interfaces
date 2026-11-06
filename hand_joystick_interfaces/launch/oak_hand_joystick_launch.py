@@ -73,6 +73,10 @@ def _create_nodes(context):
     oak_overrides = _load_consumer_overlay_parameters(config_path)
     joystick_overrides = {}
 
+    selfie_mode = LaunchConfiguration('selfie_mode').perform(context)
+    if selfie_mode != USE_YAML_DEFAULT:
+        oak_overrides['selfie_mode'] = _parse_bool(selfie_mode)
+
     fps = LaunchConfiguration('fps').perform(context)
     if fps != USE_YAML_DEFAULT:
         oak_overrides['fps'] = float(fps)
@@ -223,6 +227,12 @@ def generate_launch_description():
         ),
     )
 
+    selfie_mode_arg = DeclareLaunchArgument(
+        'selfie_mode',
+        default_value=USE_YAML_DEFAULT,
+        description='Mirror RGB, depth, and horizontal hand coordinates',
+    )
+
     visualize_arg = DeclareLaunchArgument(
         'visualize',
         default_value=USE_YAML_DEFAULT,
@@ -304,6 +314,7 @@ def generate_launch_description():
         fps_arg,
         rgb_width_arg,
         rgb_height_arg,
+        selfie_mode_arg,
         visualize_arg,
         visualize_depth_arg,
         window_name_arg,
