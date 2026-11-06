@@ -76,8 +76,10 @@ ros2 launch hand_joystick_interfaces oak_hand_joystick_launch.py \
   visualize:=true visualize_depth:=true show_control_overlay:=true
 ```
 
-This pipeline uses metric 3D landmarks. See the [OAK-D guide](README_3D.md)
-for depth and reference behavior.
+This pipeline uses metric 3D landmarks. Selfie mode is enabled by default: it
+mirrors the RGB and depth views and reverses the horizontal hand coordinate
+used for control. Disable it with `selfie_mode:=false`. See the
+[OAK-D guide](README_3D.md) for depth, reference, and coordinate behavior.
 
 ## Configure Control
 

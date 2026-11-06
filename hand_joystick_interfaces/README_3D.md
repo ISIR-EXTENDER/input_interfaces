@@ -1,6 +1,6 @@
 # OAK-D Hand Control
 
-The OAK-D pipeline reconstructs hand landmarks in RGB-camera coordinates,
+The OAK-D pipeline reconstructs hand landmarks in camera-based coordinates,
 relative to a reference, in meters. The hand joystick node normalizes the
 displacement and the mapper converts it to Cartesian translation.
 
@@ -34,6 +34,21 @@ invalid and out-of-range pixels are black. These limits also control the depth
 samples accepted for hand tracking. The depth image is internal to the producer
 and is not published as a ROS image topic.
 
+Selfie mode is enabled by default. It mirrors both RGB and aligned depth
+horizontally before detection and reverses the horizontal hand coordinate used
+for control. To use the physical camera orientation instead:
+
+```bash
+ros2 launch hand_joystick_interfaces oak_hand_joystick_launch.py \
+  selfie_mode:=false
+```
+
+With selfie mode enabled, published X coordinates are reflected even though
+`camera_frame_id` defaults to `oak_rgb_camera_optical_frame`. A reflection
+cannot be represented by a ROS TF rotation: downstream consumers needing
+physical optical-frame coordinates must undo the X reflection or disable
+selfie mode. The mapper's configured axis indexes and signs still apply.
+
 ## Configuration
 
 Hand control settings are in
@@ -60,7 +75,8 @@ ros2 launch hand_joystick_interfaces oak_hand_joystick_launch.py \
 ```
 
 The launch mirrors these control settings to the preview overlay. Camera
-capture can be overridden with `fps`, `rgb_width`, and `rgb_height`.
+capture can be overridden with `fps`, `rgb_width`, and `rgb_height`;
+`selfie_mode` overrides the camera YAML setting.
 Robot axis mapping is defined in
 [hand_joystick_mapper.yaml](config/hand_joystick_mapper.yaml).
 
