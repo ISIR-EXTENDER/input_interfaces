@@ -88,6 +88,10 @@ def _create_nodes(context):
     if visualize != USE_YAML_DEFAULT:
         oak_overrides['visualize'] = _parse_bool(visualize)
 
+    visualize_depth = LaunchConfiguration('visualize_depth').perform(context)
+    if visualize_depth != USE_YAML_DEFAULT:
+        oak_overrides['visualize_depth'] = _parse_bool(visualize_depth)
+
     window_name = LaunchConfiguration('window_name').perform(context)
     if window_name != USE_YAML_DEFAULT:
         oak_overrides['window_name'] = window_name
@@ -228,6 +232,12 @@ def generate_launch_description():
         ),
     )
 
+    visualize_depth_arg = DeclareLaunchArgument(
+        'visualize_depth',
+        default_value=USE_YAML_DEFAULT,
+        description='Show the OAK depth map (set to override YAML)',
+    )
+
     window_name_arg = DeclareLaunchArgument(
         'window_name',
         default_value=USE_YAML_DEFAULT,
@@ -295,6 +305,7 @@ def generate_launch_description():
         rgb_width_arg,
         rgb_height_arg,
         visualize_arg,
+        visualize_depth_arg,
         window_name_arg,
         config_file_arg,
         oak_config_file_arg,

@@ -73,7 +73,7 @@ explicit launch argument → `usb_cam` section of the selected hand YAML →
 
 ```bash
 ros2 launch hand_joystick_interfaces oak_hand_joystick_launch.py \
-  visualize:=true show_control_overlay:=true
+  visualize:=true visualize_depth:=true show_control_overlay:=true
 ```
 
 This pipeline uses metric 3D landmarks. See the [OAK-D guide](README_3D.md)
