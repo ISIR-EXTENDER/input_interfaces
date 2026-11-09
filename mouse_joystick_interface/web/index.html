@@ -192,27 +192,27 @@
   <div id="sliders" class="sliders">
     <h2 class="centered">Joint Sliders</h2>
     <h3>Joint 1</h3>
-    <input type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
     <input class="joint_value" value="3.14"></input>
     <h3>Joint 2</h3>
-    <input type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
     <input class="joint_value" value="3.14"></input>
     <h3>Joint 3</h3>
-    <input type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
     <input class="joint_value" value="3.14"></input>
     <h3>Joint 4</h3>
-    <input type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
     <input class="joint_value" value="3.14"></input>
     <h3>Joint 5</h3>
-    <input type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
     <input class="joint_value" value="3.14"></input>
     <h3>Joint 6</h3>
-    <input type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
     <input class="joint_value" value="3.14"></input>
   </div>
@@ -226,6 +226,7 @@
     const activeMode = document.getElementById('activeMode');
     const joyButtonGrid = document.getElementById('joyButtons');
     const joyButtonElements = Array.from(document.querySelectorAll('.joy-button'));
+    const jointSliderElements = Array.from(document.querySelectorAll('.joint_slider'));
 
     let dragging = false;
     let hoverActive = false;
@@ -239,6 +240,7 @@
     let layoutReduced = false;
     let layoutReady = false;
     const joyButtonState = Array(12).fill(0);
+    const jointSlidersState = Array(6).fill(0);
     const activePressPointers = new Map();
 
     // Publish at roughly 30 Hz while the joystick or any Joy button is held.
@@ -273,7 +275,7 @@
       fetch('/teleop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y, buttons: joyButtonState }),
+        body: JSON.stringify({ x, y, buttons: joyButtonState, sliders: jointSlidersState }),
         keepalive: true
       }).catch(() => { });
     }
