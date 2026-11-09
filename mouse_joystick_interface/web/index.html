@@ -153,7 +153,7 @@
       gap: 0.5rem;
     }
 
-    .joint_value {
+    .joint-value {
       font-size: medium;
       color: black;
       background-color: white;
@@ -161,6 +161,24 @@
       padding: 5pt;
       border-radius: 15pt;
       width: 2rem;
+    }
+
+    .joint-button {
+      min-height: 44px;
+      border-radius: 8px;
+      border: 1px solid #666;
+      background: #2a2a2a;
+      color: #f5f5f5;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      touch-action: none;
+
+    }
+
+    .joint-button.active {
+      border-color: #3fa9f5;
+      background: #176da8;
     }
   </style>
 </head>
@@ -192,29 +210,30 @@
   <div id="sliders" class="sliders">
     <h2 class="centered">Joint Sliders</h2>
     <h3>Joint 1</h3>
-    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint-slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
-    <input class="joint_value" value="3.14"></input>
+    <input class="joint-value" value="3.14"></input>
     <h3>Joint 2</h3>
-    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint-slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
-    <input class="joint_value" value="3.14"></input>
+    <input class="joint-value" value="3.14"></input>
     <h3>Joint 3</h3>
-    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint-slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
-    <input class="joint_value" value="3.14"></input>
+    <input class="joint-value" value="3.14"></input>
     <h3>Joint 4</h3>
-    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint-slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
-    <input class="joint_value" value="3.14"></input>
+    <input class="joint-value" value="3.14"></input>
     <h3>Joint 5</h3>
-    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint-slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
-    <input class="joint_value" value="3.14"></input>
+    <input class="joint-value" value="3.14"></input>
     <h3>Joint 6</h3>
-    <input class="joint_slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
+    <input class="joint-slider" type="range" value="3.14" min="0" max="6.28" step="0.01"
       oninput="this.nextElementSibling.value = this.value">
-    <input class="joint_value" value="3.14"></input>
+    <input class="joint-value" value="3.14"></input>
+    <button id="joint-button" class="joint-button" aria-pressed="false">GO</button>
   </div>
 
   <script>
@@ -226,7 +245,8 @@
     const activeMode = document.getElementById('activeMode');
     const joyButtonGrid = document.getElementById('joyButtons');
     const joyButtonElements = Array.from(document.querySelectorAll('.joy-button'));
-    const jointSliderElements = Array.from(document.querySelectorAll('.joint_slider'));
+    const jointSliderElements = Array.from(document.querySelectorAll('.joint-slider'));
+    const jointGoButton = document.getElementById('joint-button');
 
     let dragging = false;
     let hoverActive = false;
@@ -242,6 +262,7 @@
     const joyButtonState = Array(12).fill(0);
     const jointSlidersState = Array(6).fill(0);
     const activePressPointers = new Map();
+    const JointGoButtonState = false;
 
     // Publish at roughly 30 Hz while the joystick or any Joy button is held.
     const sendIntervalMs = 33;
@@ -275,7 +296,7 @@
       fetch('/teleop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y, buttons: joyButtonState, sliders: jointSlidersState }),
+        body: JSON.stringify({ x, y, buttons: joyButtonState, sliders: jointSlidersState , JointGoButton : JointGoButtonState}),
         keepalive: true
       }).catch(() => { });
     }
@@ -435,6 +456,25 @@
       sendLatestTeleop();
       updateHoldSend();
     }
+
+    function setJointGoButtonState(pressed) {
+      jointGoButton.classList.toggle('active', pressed);
+    }
+    
+    jointGoButton.addEventListener('pointerdown', (event) => {setJointGoButtonState(true);})
+    jointGoButton.addEventListener('pointerup', (event) => {setJointGoButtonState(false);})
+    function setJointSlidersState() {
+
+      for (let index = 0; index < jointSliderState.length; index++) {
+        jointSlidersState[index] = jointSliderElements[index].value();
+        
+      }
+      sendLatestTeleop();
+      updateHoldSend();
+    }
+
+
+    
 
     /** Release a press-type button owned by a pointer, including cancellations. */
     function releasePressPointer(event) {
