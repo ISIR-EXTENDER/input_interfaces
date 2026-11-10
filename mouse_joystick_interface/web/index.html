@@ -8,9 +8,7 @@
     body {
       margin: 0;
       height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      overflow: hidden;
       background: #111;
       color: #f5f5f5;
       font-family: sans-serif;
@@ -22,14 +20,18 @@
       flex-direction: column;
       align-items: center;
       gap: 12px;
-      width: 100vw;
-      height: 100vh;
-      justify-content: center;
+      width: max-content;
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%) scale(var(--layout-scale, 1));
+      transform-origin: center;
     }
 
     .pad {
-      width: min(92vw, calc(100vh - 110px));
-      height: min(92vw, calc(100vh - 110px));
+      flex-shrink: 0;
+      width: var(--joystick-diameter, 400px);
+      aspect-ratio: 1;
       border-radius: 50%;
       border: 2px solid #666;
       position: relative;
@@ -39,8 +41,8 @@
     }
 
     .knob {
-      width: 70px;
-      height: 70px;
+      width: min(70px, 30%);
+      aspect-ratio: 1;
       border-radius: 50%;
       background: #3fa9f5;
       position: absolute;
@@ -67,9 +69,12 @@
     }
 
     .button-grid {
-      width: min(92vw, 380px);
+      --button-width: 89px;
+      --button-height: 44px;
+      width: calc(var(--button-width) + var(--button-width) +
+                  var(--button-width) + var(--button-width) + 24px);
       display: grid;
-      grid-template-columns: repeat(4, minmax(56px, 1fr));
+      grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
     }
 
@@ -78,7 +83,8 @@
     }
 
     .joy-button {
-      min-height: 44px;
+      min-width: 0;
+      min-height: var(--button-height);
       border-radius: 8px;
       border: 1px solid #666;
       background: #2a2a2a;
@@ -126,10 +132,6 @@
       outline-offset: 2px;
     }
 
-    body.joy-output .pad {
-      width: min(92vw, calc(100vh - 285px));
-      height: min(92vw, calc(100vh - 285px));
-    }
   </style>
 </head>
 <body>
@@ -157,6 +159,7 @@
 
   <script>
     const pad = document.getElementById('pad');
+    const layout = document.querySelector('.wrap');
     const knob = document.getElementById('knob');
     const values = document.getElementById('values');
     const modeToggle = document.getElementById('modeToggle');
@@ -171,12 +174,33 @@
     let interactionMode = 'click';
     let latestTeleop = { x: 0, y: 0 };
     let joyButtonTypes = Array(12).fill('press');
+    let layoutScale = 1;
+    let layoutReduced = false;
+    let layoutReady = false;
     const joyButtonState = Array(12).fill(0);
     const activePressPointers = new Map();
 
     // Publish at roughly 30 Hz while the joystick or any Joy button is held.
     const sendIntervalMs = 33;
     const clamp = (v, min, max) => Math.max(min, Math.min(max, v));
+
+    /** Fit the unscaled layout in the viewport without changing its proportions. */
+    function fitLayout() {
+      if (!layoutReady) return;
+      const width = layout.offsetWidth;
+      const height = layout.offsetHeight;
+      if (!width || !height || !window.innerWidth || !window.innerHeight) return;
+      layoutScale = Math.min(1, window.innerWidth / width, window.innerHeight / height);
+      layout.style.setProperty('--layout-scale', layoutScale);
+      const reduced = layoutScale < 0.999999;
+      if (reduced && !layoutReduced) {
+        fetch('/layout-warning', { method: 'POST' }).catch(() => {});
+      }
+      layoutReduced = reduced;
+    }
+
+    window.addEventListener('resize', fitLayout);
+    new ResizeObserver(fitLayout).observe(layout);
 
     /**
      * Send normalized joystick coordinates to the ROS bridge endpoint.
@@ -243,7 +267,7 @@
       const cy = rect.top + rect.height / 2;
       const radius = rect.width / 2;
       const knobRadius = knob.getBoundingClientRect().width / 2;
-      const maxTravel = Math.max(1, radius - knobRadius);
+      const maxTravel = Math.max(layoutScale, radius - knobRadius);
 
       let dx = clientX - cx;
       let dy = clientY - cy;
@@ -260,8 +284,8 @@
       // DOM y grows downward; teleop y is positive upward on the pad.
       const y = clamp(-dy / maxTravel, -1, 1);
 
-      knob.style.left = `calc(50% + ${dx}px)`;
-      knob.style.top = `calc(50% + ${dy}px)`;
+      knob.style.left = `calc(50% + ${dx / layoutScale}px)`;
+      knob.style.top = `calc(50% + ${dy / layoutScale}px)`;
       values.textContent = `x: ${x.toFixed(2)}, y: ${y.toFixed(2)}`;
       latestTeleop = { x, y };
 
@@ -401,8 +425,20 @@
         return response.json();
       })
       .then((config) => {
+        const diameter = config.joystick_diameter_px;
+        if (Number.isSafeInteger(diameter) && diameter > 0) {
+          pad.style.setProperty('--joystick-diameter', `${diameter}px`);
+        }
         joyModeEnabled = config.output_type === 'joy';
         if (joyModeEnabled) {
+          const width = config.joy_button_width_px;
+          const height = config.joy_button_height_px;
+          if (Number.isSafeInteger(width) && width > 0) {
+            joyButtonGrid.style.setProperty('--button-width', `${width}px`);
+          }
+          if (Number.isSafeInteger(height) && height > 0) {
+            joyButtonGrid.style.setProperty('--button-height', `${height}px`);
+          }
           const configuredTypes = config.joy_button_types;
           const validTypes = Array.isArray(configuredTypes)
             && configuredTypes.length === joyButtonElements.length
@@ -423,6 +459,8 @@
         }
         joyButtonGrid.hidden = !joyModeEnabled;
         document.body.classList.toggle('joy-output', joyModeEnabled);
+        layoutReady = true;
+        fitLayout();
         if (joyModeEnabled) sendLatestTeleop();
       })
       .catch(() => {

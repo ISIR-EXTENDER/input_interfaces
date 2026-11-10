@@ -81,6 +81,14 @@ another terminal with the ROS 2 and workspace environments loaded:
 ros2 topic echo /mouse_joy
 ```
 
+Set `joystick_diameter_px` in `config/mouse_joystick_params.yaml` to a positive
+integer to choose the joystick area's diameter in CSS pixels (default: 400).
+If the interface exceeds the window, all controls scale down together without
+scrolling and a warning is logged in the server terminal. Enlarging the window
+restores the configured dimensions.
+Restart the node and refresh the page after changing the value. The setting
+applies to both Joy and twist output modes.
+
 ## Output configuration
 
 Set `output_type` to one of:
@@ -118,6 +126,13 @@ Joy mode uses the following mapping parameters:
 | `joy_axes.y.index` | `1` | Axis receiving the browser `y` value. |
 | `joy_axes.y.scale` | `1.0` | Multiplier applied to browser `y`. |
 | `joy_buttons.button_<0-11>.type` | `press` | Per-button `press` or `toggle` behavior. |
+| `joy_buttons.width_px` | `89` | Desired width of each button in CSS pixels. |
+| `joy_buttons.height_px` | `44` | Minimum button height in CSS pixels. |
+
+Button dimensions must be positive integers and are loaded at startup. The
+whole interface scales down on small screens; long labels can make
+buttons taller than the configured minimum. Restart the node and refresh the
+page after changing these dimensions.
 
 Unused axes are zero. Mapped values are clamped to `[-1, 1]` after scaling.
 Joy mode rejects non-positive array sizes, duplicate or out-of-range indexes,

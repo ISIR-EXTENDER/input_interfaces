@@ -132,14 +132,32 @@ def _validate_joy_button_types(button_types: object) -> list[str]:
     return validated_types
 
 
+def _validate_button_size(width: object, height: object) -> tuple[int, int]:
+    """Require positive integer CSS pixel dimensions."""
+    for name, value in (('width_px', width), ('height_px', height)):
+        if type(value) is not int or value <= 0:
+            raise ValueError(f'joy_buttons.{name} must be a positive integer')
+    return width, height
+
+
+def _validate_joystick_diameter(value: object) -> int:
+    """Require a positive integer joystick diameter in CSS pixels."""
+    if type(value) is not int or value <= 0:
+        raise ValueError('joystick_diameter_px must be a positive integer')
+    return value
+
+
 def _build_runtime_config(
-    output_type: str, joy_button_types: list[str], joy_button_labels: list[str]
+    output_type: str, joy_button_types: list[str], joy_button_labels: list[str],
+    button_width: int, button_height: int, joystick_diameter: int,
 ) -> dict:
     """Build the browser-visible configuration for the selected output type."""
-    config = {'output_type': output_type}
+    config = {'output_type': output_type, 'joystick_diameter_px': joystick_diameter}
     if output_type == _OUTPUT_TYPE_JOY:
         config['joy_button_types'] = _validate_joy_button_types(joy_button_types)
         config['joy_button_labels'] = joy_button_labels
+        config['joy_button_width_px'] = button_width
+        config['joy_button_height_px'] = button_height
     return config
 
 
@@ -224,6 +242,9 @@ class _TeleopHandler(BaseHTTPRequestHandler):
                     self.node.output_type_,
                     self.node.joy_button_types_,
                     self.node.joy_button_labels_,
+                    self.node.joy_button_width_,
+                    self.node.joy_button_height_,
+                    self.node.joystick_diameter_,
                 )
             )
             return
@@ -245,6 +266,15 @@ class _TeleopHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Accept a joystick command payload and publish it through ROS."""
+        if self.path == '/layout-warning':
+            if self.node is None:
+                self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
+                return
+            self.node.get_logger().warning(
+                'Mouse joystick UI scaled down to fit the browser window.'
+            )
+            self._send_json({'ok': True})
+            return
         if self.path != '/teleop':
             self.send_error(404)
             return
@@ -292,6 +322,7 @@ class MouseJoystickInterface(Node):
         self.declare_parameter('host', '127.0.0.1')
         self.declare_parameter('port', 8765)
         self.declare_parameter('auto_open_browser', True)
+        self.declare_parameter('joystick_diameter_px', 400)
         self.declare_parameter('output_type', _OUTPUT_TYPE_TWIST)
         self.declare_parameter('teleop_topic', 'teleop_cmd')
         self.declare_parameter('joy_topic', '/joy')
@@ -300,6 +331,8 @@ class MouseJoystickInterface(Node):
         self.declare_parameter('joy_axes.x.scale', 1.0)
         self.declare_parameter('joy_axes.y.index', 1)
         self.declare_parameter('joy_axes.y.scale', 1.0)
+        self.declare_parameter('joy_buttons.width_px', 89)
+        self.declare_parameter('joy_buttons.height_px', 44)
         for button_index in range(_JOY_BUTTON_COUNT):
             self.declare_parameter(
                 f'joy_buttons.button_{button_index}.type',
@@ -312,6 +345,9 @@ class MouseJoystickInterface(Node):
         auto_open_browser = (
             self.get_parameter('auto_open_browser').get_parameter_value().bool_value
         )
+        self.joystick_diameter_ = _validate_joystick_diameter(
+            self.get_parameter('joystick_diameter_px').value
+        )
         self.output_type_ = self.get_parameter('output_type').value
         teleop_topic = self.get_parameter('teleop_topic').get_parameter_value().string_value
         joy_topic = self.get_parameter('joy_topic').get_parameter_value().string_value
@@ -320,6 +356,10 @@ class MouseJoystickInterface(Node):
         self.joy_x_axis_scale_ = self.get_parameter('joy_axes.x.scale').value
         self.joy_y_axis_index_ = self.get_parameter('joy_axes.y.index').value
         self.joy_y_axis_scale_ = self.get_parameter('joy_axes.y.scale').value
+        self.joy_button_width_, self.joy_button_height_ = _validate_button_size(
+            self.get_parameter('joy_buttons.width_px').value,
+            self.get_parameter('joy_buttons.height_px').value,
+        )
         self.joy_button_types_ = [
             self.get_parameter(f'joy_buttons.button_{button_index}.type').value
             for button_index in range(_JOY_BUTTON_COUNT)
