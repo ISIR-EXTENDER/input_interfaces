@@ -15,6 +15,7 @@
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
+from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -41,4 +42,27 @@ def generate_launch_description() -> LaunchDescription:
         parameters=[LaunchConfiguration('config_file')],
     )
 
-    return LaunchDescription([config_file_arg, node])
+    mapper_config_file_arg = DeclareLaunchArgument(
+        'mapper_config_file',
+        default_value=PathJoinSubstitution(
+            [FindPackageShare('mouse_joystick_interface'), 'config',
+             'mouse_joystick_mapper.yaml']
+        ),
+        description='Mouse joystick mapper YAML parameter file',
+    )
+    start_mapper_arg = DeclareLaunchArgument(
+        'start_mapper', default_value='true',
+        description='Start the mouse mapper; disable when bringup owns it',
+    )
+    mapper_node = Node(
+        package='joystick_mapper',
+        executable='joystick_mapper_node',
+        name='joystick_mapper',
+        output='screen',
+        parameters=[LaunchConfiguration('mapper_config_file')],
+        condition=IfCondition(LaunchConfiguration('start_mapper')),
+    )
+
+    return LaunchDescription([
+        config_file_arg, start_mapper_arg, mapper_config_file_arg, node, mapper_node,
+    ])

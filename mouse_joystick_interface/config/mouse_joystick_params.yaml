@@ -15,7 +15,7 @@ mouse_joystick_interface:
     teleop_topic: "teleop_cmd"
 
     # Topic and browser-coordinate mapping used when output_type is "joy".
-    joy_topic: "/joy"
+    joy_topic: "/mouse_joy"
     joy_axis_count: 2
     joy_axes:
       x:

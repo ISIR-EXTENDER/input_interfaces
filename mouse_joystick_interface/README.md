@@ -27,7 +27,7 @@ to match your checkout. A web browser is required to use the joystick.
    source /opt/ros/jazzy/setup.bash
    cd ~/extender_workspace
    rosdep update
-   rosdep install --from-paths src/input_interfaces/mouse_joystick_interface src/tools/extender_msgs --ignore-src --rosdistro jazzy -r -y
+   rosdep install --from-paths src --ignore-src --rosdistro jazzy -r -y
    ```
 
    Keep `src/tools/extender_msgs` in the workspace: the server imports
@@ -52,15 +52,20 @@ to match your checkout. A web browser is required to use the joystick.
 ros2 launch mouse_joystick_interface mouse_joystick_launch.py
 ```
 
-The launch file loads `config/mouse_joystick_params.yaml`. The browser UI is
+The launch file loads `config/mouse_joystick_params.yaml` and starts
+`joystick_mapper` with `config/mouse_joystick_mapper.yaml`. Set
+`start_mapper:=false` if another launch already starts the mapper, or use
+`mapper_config_file:=/path/to/config.yaml` to select a different mapper configuration.
+The default mapper reads `/mouse_joy` and publishes Cartesian commands on
+`/mouse_joystick_cartesian_command`. The browser UI is
 available at the configured HTTP host and port: with the supplied configuration,
 open <http://127.0.0.5:8765> if the browser does not open automatically. This
 address is local to the machine running the node. The supplied configuration
-selects Joy output on `/joy`; move the joystick and check the messages from
+selects Joy output on `/mouse_joy`; move the joystick and check the messages from
 another terminal with the ROS 2 and workspace environments loaded:
 
 ```bash
-ros2 topic echo /joy
+ros2 topic echo /mouse_joy
 ```
 
 ## Output configuration
