@@ -29,6 +29,7 @@ if(BUILD_TESTING)
     test/test_mouse_joystick_server.py
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/scripts
   )
+  ament_add_pytest_test(test_mapper_launch test/test_mapper_launch.py)
 endif()
 
 ament_package()

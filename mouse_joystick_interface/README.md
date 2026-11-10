@@ -56,6 +56,15 @@ The launch file loads `config/mouse_joystick_params.yaml` and starts
 `joystick_mapper` with `config/mouse_joystick_mapper.yaml`. Set
 `start_mapper:=false` if another launch already starts the mapper, or use
 `mapper_config_file:=/path/to/config.yaml` to select a different mapper configuration.
+When the launch starts the mapper, its button indexes and modes override the
+corresponding interface button types at startup: `toggle` and `trigger` use a
+momentary `press`, while `hold`, `momentary`, and `pressed` use an interface
+`toggle`. Unassigned buttons retain their interface configuration. Conflicting
+types for one index or indexes outside 0–11 stop the launch. Missing or unknown
+mapper modes use the mapper's default for that function. These overrides do not
+change either YAML file; restart the launch after changing the mapper config.
+With `start_mapper:=false`, no overrides are applied and `mapper_config_file`
+is not read.
 The default mapper reads `/mouse_joy` and publishes Cartesian commands on
 `/mouse_joystick_cartesian_command`. The browser UI is
 available at the configured HTTP host and port: with the supplied configuration,

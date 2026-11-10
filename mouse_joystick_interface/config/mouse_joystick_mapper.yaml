@@ -4,8 +4,6 @@ joystick_mapper:
     output_topic: "/mouse_joystick_cartesian_command"
     mode_request_topic: "/mode_request"
     deadzone: 0.2
-    local_mode_button_index: 1
-    local_mode_button_mode: toggle
     modes:
       names: ["b1", "b2", "b3"]
       b1:
@@ -71,6 +69,8 @@ joystick_mapper:
           angular_z:
             index: -1
             scale: 1.0
+    local_mode_button_index: 1
+    local_mode_button_mode: toggle
     jaco_button_index: 11
     jaco_button_mode: toggle
     snake_button_index: 10
