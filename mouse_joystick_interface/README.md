@@ -89,6 +89,18 @@ restores the configured dimensions.
 Restart the node and refresh the page after changing the value. The setting
 applies to both Joy and twist output modes.
 
+Set `interaction_mode` to `click` (default) or `mouseover` to choose how the
+joystick responds when the page opens. The mode button can still switch between
+them; refreshing the page restores the configured mode. Restart the node after
+changing the YAML configuration.
+
+The page shows the latest local mode published by the mouse mapper, or `—`
+until one is received. When this launch starts the mapper, the mode topic is
+derived from `mapper_name` in `mapper_config_file`; an empty name uses the
+legacy `/joystick_mapper/active_mode`. With `start_mapper:=false`, set
+`active_mode_topic` in the interface YAML to the external mapper's topic.
+The separate Interaction button controls Click/Mouseover as before.
+
 ## Output configuration
 
 Set `output_type` to one of:

@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import re
+
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.conditions import IfCondition
@@ -73,7 +75,16 @@ def _mapper_button_overrides(config_path):
             assignments[index][1].append(name)
         else:
             assignments[index] = (button_type, [name])
-    overrides = {}
+    mapper_name = params.get('mapper_name', '')
+    if not isinstance(mapper_name, str) or (
+        mapper_name and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', mapper_name)
+    ):
+        raise ValueError('mapper_name must be a valid ROS topic segment')
+    active_topic = (
+        f'/joystick_mapper/{mapper_name}/active_mode' if mapper_name
+        else '/joystick_mapper/active_mode'
+    )
+    overrides = {'active_mode_topic': active_topic}
     for index, (button_type, names) in assignments.items():
         overrides[f'joy_buttons.button_{index}.type'] = button_type
         overrides[f'joy_buttons.button_{index}.label'] = ' / '.join(names)

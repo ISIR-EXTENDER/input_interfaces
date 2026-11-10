@@ -30,6 +30,10 @@ if(BUILD_TESTING)
     APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/scripts
   )
   ament_add_pytest_test(test_mapper_launch test/test_mapper_launch.py)
+  ament_add_pytest_test(test_active_mode
+    tests/test_active_mode.py
+    APPEND_ENV PYTHONPATH=${CMAKE_CURRENT_SOURCE_DIR}/scripts
+  )
 endif()
 
 ament_package()

@@ -7,6 +7,12 @@ mouse_joystick_interface:
     # If a graphical session is available, open the UI automatically at startup.
     auto_open_browser: true
 
+    # Initial joystick interaction: "click" or "mouseover".
+    interaction_mode: "click"
+
+    # Used when start_mapper is false; otherwise derived from mapper_name.
+    active_mode_topic: "/joystick_mapper/mouse/active_mode"
+
     # Desired diameter of the circular joystick area, in CSS pixels.
     joystick_diameter_px: 600
 

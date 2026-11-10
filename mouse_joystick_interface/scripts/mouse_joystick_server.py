@@ -29,7 +29,9 @@ from ament_index_python.packages import get_package_share_directory
 from extender_msgs.msg import TeleopCommand
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Joy
+from std_msgs.msg import String
 
 
 _OUTPUT_TYPE_TWIST = 'twist'
@@ -147,12 +149,22 @@ def _validate_joystick_diameter(value: object) -> int:
     return value
 
 
+def _validate_interaction_mode(value: object) -> str:
+    """Validate the initial browser joystick interaction mode."""
+    if value not in ('click', 'mouseover'):
+        raise ValueError('interaction_mode must be click or mouseover')
+    return value
+
+
 def _build_runtime_config(
     output_type: str, joy_button_types: list[str], joy_button_labels: list[str],
-    button_width: int, button_height: int, joystick_diameter: int,
+    button_width: int, button_height: int, joystick_diameter: int, interaction_mode: str,
 ) -> dict:
     """Build the browser-visible configuration for the selected output type."""
-    config = {'output_type': output_type, 'joystick_diameter_px': joystick_diameter}
+    config = {
+        'output_type': output_type, 'joystick_diameter_px': joystick_diameter,
+        'interaction_mode': interaction_mode,
+    }
     if output_type == _OUTPUT_TYPE_JOY:
         config['joy_button_types'] = _validate_joy_button_types(joy_button_types)
         config['joy_button_labels'] = joy_button_labels
@@ -232,6 +244,12 @@ class _TeleopHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         """Serve the web joystick page or its runtime output configuration."""
+        if self.path == '/active_mode':
+            if self.node is None:
+                self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
+                return
+            self._send_json({'active_mode': self.node.active_mode_})
+            return
         if self.path == '/config':
             if self.node is None:
                 self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
@@ -245,6 +263,7 @@ class _TeleopHandler(BaseHTTPRequestHandler):
                     self.node.joy_button_width_,
                     self.node.joy_button_height_,
                     self.node.joystick_diameter_,
+                    self.node.interaction_mode_,
                 )
             )
             return
@@ -322,6 +341,8 @@ class MouseJoystickInterface(Node):
         self.declare_parameter('host', '127.0.0.1')
         self.declare_parameter('port', 8765)
         self.declare_parameter('auto_open_browser', True)
+        self.declare_parameter('interaction_mode', 'click')
+        self.declare_parameter('active_mode_topic', '/joystick_mapper/mouse/active_mode')
         self.declare_parameter('joystick_diameter_px', 400)
         self.declare_parameter('output_type', _OUTPUT_TYPE_TWIST)
         self.declare_parameter('teleop_topic', 'teleop_cmd')
@@ -348,6 +369,9 @@ class MouseJoystickInterface(Node):
         self.joystick_diameter_ = _validate_joystick_diameter(
             self.get_parameter('joystick_diameter_px').value
         )
+        self.interaction_mode_ = _validate_interaction_mode(
+            self.get_parameter('interaction_mode').value
+        )
         self.output_type_ = self.get_parameter('output_type').value
         teleop_topic = self.get_parameter('teleop_topic').get_parameter_value().string_value
         joy_topic = self.get_parameter('joy_topic').get_parameter_value().string_value
@@ -371,6 +395,14 @@ class MouseJoystickInterface(Node):
         ]
 
         _validate_output_type(self.output_type_)
+
+        self.active_mode_ = None
+        qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                         reliability=ReliabilityPolicy.RELIABLE)
+        self.active_mode_sub_ = self.create_subscription(
+            String, self.get_parameter('active_mode_topic').value,
+            self._active_mode_callback, qos,
+        )
 
         self.teleop_pub_ = None
         self.joy_pub_ = None
@@ -402,6 +434,10 @@ class MouseJoystickInterface(Node):
 
         if auto_open_browser:
             self._open_browser(self.url_)
+
+    def _active_mode_callback(self, msg: String) -> None:
+        """Store the latest mapper state for browser clients."""
+        self.active_mode_ = msg.data or None
 
     def _resolve_web_root(self) -> Path:
         """Return the directory containing the installed browser UI assets."""

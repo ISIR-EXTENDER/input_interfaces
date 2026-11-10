@@ -12,6 +12,8 @@
 
 namespace joystick_mapper
 {
+  std::string activeModeTopic(const std::string &mapper_name);
+
   enum class ButtonActivationMode
   {
     TRIGGER,

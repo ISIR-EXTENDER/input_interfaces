@@ -1,5 +1,6 @@
 joystick_mapper:
   ros__parameters:
+    mapper_name: mouse
     joy_topic: "/mouse_joy"
     output_topic: "/mouse_joystick_cartesian_command"
     mode_request_topic: "/mode_request"

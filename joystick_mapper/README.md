@@ -9,6 +9,12 @@ other packages can consume a normal Cartesian twist command.
 
 ## Topics
 
+Set `mapper_name` to a valid ROS topic segment (for example `mouse`) to publish
+the active local mode on `/joystick_mapper/<mapper_name>/active_mode`. An empty
+or absent name keeps the legacy `/joystick_mapper/active_mode` topic. Use a
+distinct name for each concurrent mapper; this parameter does not rename the
+ROS node. The active mode publisher uses reliable, transient-local QoS.
+
 By default, the node subscribes to:
 
 | Topic | Type | Purpose |

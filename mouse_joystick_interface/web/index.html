@@ -136,7 +136,8 @@
 </head>
 <body>
   <div class="wrap">
-    <button id="modeToggle" class="mode-toggle">Mode: Click</button>
+    <div id="activeMode" class="values" aria-live="polite">Mode: —</div>
+    <button id="modeToggle" class="mode-toggle">Interaction: Click</button>
     <div id="pad" class="pad">
       <div id="knob" class="knob"></div>
     </div>
@@ -163,6 +164,7 @@
     const knob = document.getElementById('knob');
     const values = document.getElementById('values');
     const modeToggle = document.getElementById('modeToggle');
+    const activeMode = document.getElementById('activeMode');
     const joyButtonGrid = document.getElementById('joyButtons');
     const joyButtonElements = Array.from(document.querySelectorAll('.joy-button'));
 
@@ -346,7 +348,7 @@
 
     modeToggle.addEventListener('click', () => {
       interactionMode = interactionMode === 'click' ? 'hover' : 'click';
-      modeToggle.textContent = interactionMode === 'click' ? 'Mode: Click' : 'Mode: Mouseover';
+      modeToggle.textContent = interactionMode === 'click' ? 'Interaction: Click' : 'Interaction: Mouseover';
       dragging = false;
       hoverActive = false;
       centerJoystick();
@@ -419,12 +421,28 @@
       if (document.hidden) releaseActivePressButtons();
     });
 
+    function pollActiveMode() {
+      fetch('/active_mode', { cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) throw new Error('Failed to load active mode');
+          return response.json();
+        })
+        .then((state) => {
+          activeMode.textContent = `Mode: ${typeof state.active_mode === 'string' && state.active_mode ? state.active_mode : '—'}`;
+        })
+        .catch(() => {})
+        .finally(() => setTimeout(pollActiveMode, 500));
+    }
+    pollActiveMode();
+
     fetch('/config', { cache: 'no-store' })
       .then((response) => {
         if (!response.ok) throw new Error('Failed to load output configuration');
         return response.json();
       })
       .then((config) => {
+        interactionMode = config.interaction_mode === 'mouseover' ? 'hover' : 'click';
+        modeToggle.textContent = interactionMode === 'click' ? 'Interaction: Click' : 'Interaction: Mouseover';
         const diameter = config.joystick_diameter_px;
         if (Number.isSafeInteger(diameter) && diameter > 0) {
           pad.style.setProperty('--joystick-diameter', `${diameter}px`);
