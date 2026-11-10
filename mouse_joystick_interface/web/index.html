@@ -225,7 +225,7 @@
       lastSent = performance.now();
     }
 
-    /** Stop the repeated sender used while a click-mode drag is held. */
+    /** Stop the repeated sender when no joystick or button is active. */
     function stopHoldSend() {
       if (holdSendTimer === null) return;
       clearInterval(holdSendTimer);
@@ -234,7 +234,8 @@
 
     /** Return whether an active joystick or button needs repeated publishing. */
     function shouldRepeatSend() {
-      const joystickHeld = dragging && interactionMode === 'click';
+      const joystickHeld = (dragging && interactionMode === 'click') ||
+        (hoverActive && interactionMode === 'hover');
       return joystickHeld || joyButtonState.some((value) => value === 1);
     }
 
@@ -331,16 +332,21 @@
       updateHoldSend();
     };
 
-    pad.addEventListener('pointerenter', () => {
+    pad.addEventListener('pointerenter', (event) => {
       if (interactionMode !== 'hover') return;
       hoverActive = true;
+      updateJoystick(event.clientX, event.clientY, { forceSend: true });
+      updateHoldSend();
     });
 
-    pad.addEventListener('pointerleave', () => {
-      if (interactionMode !== 'hover') return;
+    function stopHover() {
+      if (!hoverActive) return;
       hoverActive = false;
       centerJoystick();
-    });
+      updateHoldSend();
+    }
+
+    pad.addEventListener('pointerleave', stopHover);
 
     pad.addEventListener('pointerup', stop);
     pad.addEventListener('pointercancel', stop);
@@ -415,10 +421,15 @@
       updateHoldSend();
     }
 
+    window.addEventListener('blur', stopHover);
+    window.addEventListener('pagehide', stopHover);
     window.addEventListener('blur', releaseActivePressButtons);
     window.addEventListener('pagehide', releaseActivePressButtons);
     document.addEventListener('visibilitychange', () => {
-      if (document.hidden) releaseActivePressButtons();
+      if (document.hidden) {
+        stopHover();
+        releaseActivePressButtons();
+      }
     });
 
     function pollActiveMode() {

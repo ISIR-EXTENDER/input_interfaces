@@ -93,6 +93,9 @@ Set `interaction_mode` to `click` (default) or `mouseover` to choose how the
 joystick responds when the page opens. The mode button can still switch between
 them; refreshing the page restores the configured mode. Restart the node after
 changing the YAML configuration.
+In mouseover mode, the current joystick position is republished while the
+pointer remains in the area, even when it is stationary. Leaving the area or
+hiding the page sends a neutral command and stops that repeated publishing.
 
 The page shows the latest local mode published by the mouse mapper, or `—`
 until one is received. When this launch starts the mapper, the mode topic is
