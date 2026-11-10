@@ -63,6 +63,10 @@ momentary `press`, while `hold`, `momentary`, and `pressed` use an interface
 types for one index or indexes outside 0–11 stop the launch. Missing or unknown
 mapper modes use the mapper's default for that function. These overrides do not
 change either YAML file; restart the launch after changing the mapper config.
+The browser labels assigned buttons with their mapper function names (joined by
+` / ` when multiple functions share a button). Unassigned buttons keep their
+numbers. Labels are also determined at startup; when `start_mapper:=false`,
+all buttons display their numbers.
 With `start_mapper:=false`, no overrides are applied and `mapper_config_file`
 is not read.
 The default mapper reads `/mouse_joy` and publishes Cartesian commands on

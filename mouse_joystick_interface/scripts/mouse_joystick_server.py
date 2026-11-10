@@ -132,11 +132,14 @@ def _validate_joy_button_types(button_types: object) -> list[str]:
     return validated_types
 
 
-def _build_runtime_config(output_type: str, joy_button_types: list[str]) -> dict:
+def _build_runtime_config(
+    output_type: str, joy_button_types: list[str], joy_button_labels: list[str]
+) -> dict:
     """Build the browser-visible configuration for the selected output type."""
     config = {'output_type': output_type}
     if output_type == _OUTPUT_TYPE_JOY:
         config['joy_button_types'] = _validate_joy_button_types(joy_button_types)
+        config['joy_button_labels'] = joy_button_labels
     return config
 
 
@@ -220,6 +223,7 @@ class _TeleopHandler(BaseHTTPRequestHandler):
                 _build_runtime_config(
                     self.node.output_type_,
                     self.node.joy_button_types_,
+                    self.node.joy_button_labels_,
                 )
             )
             return
@@ -301,6 +305,7 @@ class MouseJoystickInterface(Node):
                 f'joy_buttons.button_{button_index}.type',
                 _JOY_BUTTON_TYPE_PRESS,
             )
+            self.declare_parameter(f'joy_buttons.button_{button_index}.label', '')
 
         host = self.get_parameter('host').get_parameter_value().string_value
         port = self.get_parameter('port').get_parameter_value().integer_value
@@ -317,6 +322,11 @@ class MouseJoystickInterface(Node):
         self.joy_y_axis_scale_ = self.get_parameter('joy_axes.y.scale').value
         self.joy_button_types_ = [
             self.get_parameter(f'joy_buttons.button_{button_index}.type').value
+            for button_index in range(_JOY_BUTTON_COUNT)
+        ]
+        self.joy_button_labels_ = [
+            self.get_parameter(f'joy_buttons.button_{button_index}.label').value
+            or str(button_index)
             for button_index in range(_JOY_BUTTON_COUNT)
         ]
 

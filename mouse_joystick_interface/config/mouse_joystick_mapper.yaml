@@ -38,7 +38,7 @@ joystick_mapper:
             scale: 1.0
           linear_z:
             index: 1
-            scale: -1.0
+            scale: 1.0
           angular_x:
             index: -1
             scale: 1.0
@@ -47,7 +47,7 @@ joystick_mapper:
             scale: 1.0
           angular_z:
             index: 0
-            scale: -1.0
+            scale: 1.0
       b3:
         angular_output_frame_id: "effector_frame"
         axes:

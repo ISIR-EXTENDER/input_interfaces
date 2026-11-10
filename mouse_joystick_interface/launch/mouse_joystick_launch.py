@@ -34,7 +34,7 @@ _BUTTON_COUNT = 12
 
 
 def _mapper_button_overrides(config_path):
-    """Derive interface button types from the mapper's ROS parameters."""
+    """Derive interface button types and labels from the mapper parameters."""
     try:
         with open(config_path, encoding='utf-8') as config_file:
             config = yaml.safe_load(config_file)
@@ -69,11 +69,15 @@ def _mapper_button_overrides(config_path):
                 f'Button {index} has conflicting interface types for '
                 f'{assignments[index][1]} and {name}'
             )
-        assignments[index] = (button_type, name)
-    return {
-        f'joy_buttons.button_{index}.type': button_type
-        for index, (button_type, _) in assignments.items()
-    }
+        if index in assignments:
+            assignments[index][1].append(name)
+        else:
+            assignments[index] = (button_type, [name])
+    overrides = {}
+    for index, (button_type, names) in assignments.items():
+        overrides[f'joy_buttons.button_{index}.type'] = button_type
+        overrides[f'joy_buttons.button_{index}.label'] = ' / '.join(names)
+    return overrides
 
 
 def _interface_node(context):

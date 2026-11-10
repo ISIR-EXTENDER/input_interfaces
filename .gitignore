@@ -25,3 +25,7 @@ log/
 
 # Hand joystick local tests
 /hand_joystick_interfaces/test/
+
+mouse_joystick_interface/test/*
+!mouse_joystick_interface/test/test_mapper_launch.py
+mouse_joystick_interface/test/
