@@ -73,6 +73,9 @@ namespace joystick_mapper
     void handleCommandButton(const sensor_msgs::msg::Joy &msg, Button &button,
                              const std::string &request, const std::string &release_request = {});
     void handleGripperButton(const sensor_msgs::msg::Joy &msg);
+    void handleScaleIncreaseButton(const sensor_msgs::msg::Joy &msg);
+    void handleScaleDecreaseButton(const sensor_msgs::msg::Joy &msg);
+
     void publishModeRequest(const std::string &request);
     void publishActiveMode();
     void publishGripperCommand(bool close);
@@ -90,12 +93,19 @@ namespace joystick_mapper
     std::vector<std::string> mode_angular_frame_ids_;
     std::vector<AxisMap> mode_axes_;
     std::size_t active_mode_index_{0};
+    double general_scale_ {0.4};
+    double max_general_scale_ {1.0};
+    double min_general_scale_ {0.2};
+    double increment_general_scale_ {0.2};
 
     Button local_mode_button_;
     Button jaco_button_;
     Button snake_button_;
     Button home_button_;
     Button gripper_button_;
+    Button scale_increase_button_;
+    Button scale_decrease_button_; 
+    
 
     std::string current_geometric_state_{"both"};
 

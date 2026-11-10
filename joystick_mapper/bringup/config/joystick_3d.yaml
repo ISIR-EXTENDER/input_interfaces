@@ -61,4 +61,13 @@ joystick_mapper:
     gripper_command_topic: "/gripper_controller/commands"
     gripper_open_position: 0.2
     gripper_close_position: 1.1
+    scale_increase_button_index: 3
+    scale_increase_button_mode: trigger
+    scale_decrease_button_index: 2
+    scale_decrease_button_mode: trigger
+    general_scale: 0.4
+    max_general_scale: 1.0
+    min_general_scale: 0.1
+    increment_general_scale: 0.1
+    
     debug: false
