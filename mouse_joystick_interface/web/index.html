@@ -262,7 +262,7 @@
     const joyButtonState = Array(12).fill(0);
     const jointSlidersState = Array(6).fill(0);
     const activePressPointers = new Map();
-    const JointGoButtonState = false;
+    let JointGoButtonState = false;
 
     // Publish at roughly 30 Hz while the joystick or any Joy button is held.
     const sendIntervalMs = 33;
@@ -293,10 +293,11 @@
      * @param {number} y - Normalized left/right command in [-1, 1].
      */
     function sendTeleop(x, y) {
-      fetch('/teleop', {
+      console.log(JointGoButtonState);
+        fetch('/teleop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ x, y, buttons: joyButtonState, sliders: jointSlidersState , JointGoButton : JointGoButtonState}),
+        body: JSON.stringify({ x, y, buttons: joyButtonState, sliders: jointSlidersState, JointGoButton: JointGoButtonState }),
         keepalive: true
       }).catch(() => { });
     }
@@ -318,7 +319,7 @@
     function shouldRepeatSend() {
       const joystickHeld = (dragging && interactionMode === 'click') ||
         (hoverActive && interactionMode === 'hover');
-      return joystickHeld || joyButtonState.some((value) => value === 1);
+      return joystickHeld || joyButtonState.some((value) => value === 1) || JointGoButtonState;
     }
 
     /** Keep a roughly 30 Hz sender active while the joystick or a button is held. */
@@ -459,22 +460,25 @@
 
     function setJointGoButtonState(pressed) {
       jointGoButton.classList.toggle('active', pressed);
+      JointGoButtonState = pressed;
+      setJointSlidersState();
     }
-    
-    jointGoButton.addEventListener('pointerdown', (event) => {setJointGoButtonState(true);})
-    jointGoButton.addEventListener('pointerup', (event) => {setJointGoButtonState(false);})
+
+    jointGoButton.addEventListener('pointerdown', (event) => { setJointGoButtonState(true); })
+    jointGoButton.addEventListener('pointerup', (event) => { setJointGoButtonState(false); })
+
     function setJointSlidersState() {
 
-      for (let index = 0; index < jointSliderState.length; index++) {
-        jointSlidersState[index] = jointSliderElements[index].value();
-        
+      for (let index = 0; index < jointSlidersState.length; index++) {
+        jointSlidersState[index] = Number(jointSliderElements[index].value);
+
       }
       sendLatestTeleop();
       updateHoldSend();
     }
 
 
-    
+
 
     /** Release a press-type button owned by a pointer, including cancellations. */
     function releasePressPointer(event) {
