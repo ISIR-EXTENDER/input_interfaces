@@ -1,5 +1,6 @@
 joystick_mapper:
   ros__parameters:
+    mapper_name: physical_2d
     joy_topic: "/joy"
     output_topic: "/physical_joystick_cartesian_command"
     mode_request_topic: "/mode_request"

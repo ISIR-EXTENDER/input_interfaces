@@ -1,0 +1,86 @@
+joystick_mapper:
+  ros__parameters:
+    mapper_name: mouse
+    joy_topic: "/mouse_joy"
+    output_topic: "/mouse_joystick_cartesian_command"
+    mode_request_topic: "/mode_request"
+    deadzone: 0.2
+    modes:
+      names: ["b1", "b2", "b3"]
+      b1:
+        angular_output_frame_id: "base_link"
+        axes:
+          linear_x:
+            index: 1
+            scale: 1.0
+          linear_y:
+            index: 0
+            scale: -1.0
+          linear_z:
+            index: -1
+            scale: 1.0
+          angular_x:
+            index: -1
+            scale: 1.0
+          angular_y:
+            index: -1
+            scale: 1.0
+          angular_z:
+            index: -1
+            scale: 1.0
+      b2:
+        angular_output_frame_id: "effector_frame"
+        axes:
+          linear_x:
+            index: -1
+            scale: 1.0
+          linear_y:
+            index: -1
+            scale: 1.0
+          linear_z:
+            index: 1
+            scale: 1.0
+          angular_x:
+            index: -1
+            scale: 1.0
+          angular_y:
+            index: -1
+            scale: 1.0
+          angular_z:
+            index: 0
+            scale: 1.0
+      b3:
+        angular_output_frame_id: "effector_frame"
+        axes:
+          linear_x:
+            index: -1
+            scale: 1.0
+          linear_y:
+            index: -1
+            scale: 1.0
+          linear_z:
+            index: -1
+            scale: 1.0
+          angular_x:
+            index: 1
+            scale: 1.0
+          angular_y:
+            index: 0
+            scale: 1.0
+          angular_z:
+            index: -1
+            scale: 1.0
+    local_mode_button_index: 1
+    local_mode_button_mode: toggle
+    jaco_button_index: 11
+    jaco_button_mode: toggle
+    snake_button_index: 10
+    snake_button_mode: hold
+    home_button_index: 4
+    home_button_mode: hold
+    gripper_button_index: 0
+    gripper_button_mode: toggle
+    gripper_command_topic: "/gripper_controller/commands"
+    gripper_open_position: 0.2
+    gripper_close_position: 1.1
+    debug: false
