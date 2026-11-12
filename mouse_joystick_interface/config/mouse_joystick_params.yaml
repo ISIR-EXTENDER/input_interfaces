@@ -16,14 +16,7 @@ mouse_joystick_interface:
     # Desired diameter of the circular joystick area, in CSS pixels.
     joystick_diameter_px: 600
 
-    # Output message selection: "twist" keeps the existing TeleopCommand
-    # wrapper, while "joy" publishes sensor_msgs/msg/Joy.
-    output_type: "joy"
-
-    # Output topic used when output_type is "twist".
-    teleop_topic: "teleop_cmd"
-
-    # Topic and browser-coordinate mapping used when output_type is "joy".
+    # Joy topic and browser-coordinate mapping.
     joy_topic: "/mouse_joy"
     joy_axis_count: 2
     joy_axes:

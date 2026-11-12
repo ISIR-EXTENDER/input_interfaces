@@ -1,8 +1,7 @@
 # mouse_joystick_interface
 
 `mouse_joystick_interface` serves a browser-based two-axis joystick and publishes
-its normalized coordinates as either the existing
-`extender_msgs/msg/TeleopCommand` output or a `sensor_msgs/msg/Joy` message.
+its normalized coordinates and buttons as a `sensor_msgs/msg/Joy` message.
 
 ## Installation
 
@@ -20,8 +19,7 @@ to match your checkout. A web browser is required to use the joystick.
    If rosdep has not been initialized on this machine, run `sudo rosdep init`
    once before continuing.
 
-2. Load ROS 2 and install the dependencies of the interface and its local
-   message package:
+2. Load ROS 2 and install the workspace dependencies:
 
    ```bash
    source /opt/ros/jazzy/setup.bash
@@ -30,10 +28,8 @@ to match your checkout. A web browser is required to use the joystick.
    rosdep install --from-paths src --ignore-src --rosdistro jazzy -r -y
    ```
 
-   Keep `src/tools/extender_msgs` in the workspace: the server imports
-   `TeleopCommand` even when configured to publish Joy messages. The HTTP server
-   uses Python's standard library; no additional pip or npm installation is
-   needed.
+   The HTTP server uses Python's standard library; no additional pip or npm
+   installation is needed.
 
 3. Build the interface together with its workspace dependencies, then load the
    resulting environment:
@@ -74,7 +70,7 @@ The default mapper reads `/mouse_joy` and publishes Cartesian commands on
 available at the configured HTTP host and port: with the supplied configuration,
 open <http://127.0.0.5:8765> if the browser does not open automatically. This
 address is local to the machine running the node. The supplied configuration
-selects Joy output on `/mouse_joy`; move the joystick and check the messages from
+publishes Joy output on `/mouse_joy`; move the joystick and check the messages from
 another terminal with the ROS 2 and workspace environments loaded:
 
 ```bash
@@ -87,7 +83,7 @@ If the interface exceeds the window, all controls scale down together without
 scrolling and a warning is logged in the server terminal. Enlarging the window
 restores the configured dimensions.
 Restart the node and refresh the page after changing the value. The setting
-applies to both Joy and twist output modes.
+applies to the joystick interface.
 
 Set `interaction_mode` to `click` (default) or `mouseover` to choose how the
 joystick responds when the page opens. The mode button can still switch between
@@ -106,16 +102,9 @@ The separate Interaction button controls Click/Mouseover as before.
 
 ## Output configuration
 
-Set `output_type` to one of:
-
-- `twist` (default): publish a `TeleopCommand` on `teleop_topic`. The browser's
-  `x` and `y` values populate `twist.linear.x` and `twist.linear.y`, and the
-  command mode is translation.
-- `joy`: publish a timestamped `sensor_msgs/msg/Joy` on `joy_topic`. The web UI
-  displays twelve configurable buttons mapped to Joy button indexes `0` through
-  `11`.
-
-The button controls are hidden in `twist` mode. In Joy mode, pressing or
+The node publishes timestamped `sensor_msgs/msg/Joy` messages on `joy_topic`.
+The web UI displays twelve configurable buttons mapped to indexes `0` through
+`11`. Pressing or
 releasing a button publishes the complete current axes and button state
 immediately. Each `joy_buttons.button_<index>.type` parameter accepts:
 
@@ -131,7 +120,7 @@ ordered `joy_button_types` list from the read-only `GET /config` endpoint.
 Toggle controls use an amber pill design with a visible `TOGGLE` label, while
 press controls retain the rectangular blue-active design.
 
-Joy mode uses the following mapping parameters:
+The joystick uses the following mapping parameters:
 
 | Parameter | Default | Meaning |
 | --- | --- | --- |
@@ -150,8 +139,7 @@ buttons taller than the configured minimum. Restart the node and refresh the
 page after changing these dimensions.
 
 Unused axes are zero. Mapped values are clamped to `[-1, 1]` after scaling.
-Joy mode rejects non-positive array sizes, duplicate or out-of-range indexes,
+The node rejects non-positive array sizes, duplicate or out-of-range indexes,
 and non-finite scales at startup. Joy HTTP payloads must contain exactly twelve
 integer button values, each `0` or `1`; omitting the field defaults every button
-to zero for backward compatibility. Unsupported button types are rejected when
-Joy mode starts. An unsupported `output_type` is always rejected at startup.
+to zero for backward compatibility. Unsupported button types are rejected at startup.

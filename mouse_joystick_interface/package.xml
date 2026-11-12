@@ -2,14 +2,13 @@
 <package format="3">
   <name>mouse_joystick_interface</name>
   <version>0.0.0</version>
-  <description>2D mouse joystick web interface publishing teleop commands</description>
+  <description>2D mouse joystick web interface publishing Joy messages</description>
   <maintainer email="etienne.moullet@gmail.com">emoullet</maintainer>
   <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 
   <exec_depend>rclpy</exec_depend>
-  <exec_depend>extender_msgs</exec_depend>
   <exec_depend>sensor_msgs</exec_depend>
   <exec_depend>std_msgs</exec_depend>
   <exec_depend>ament_index_python</exec_depend>

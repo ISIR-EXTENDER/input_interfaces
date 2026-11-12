@@ -170,7 +170,7 @@
 
     let dragging = false;
     let hoverActive = false;
-    let joyModeEnabled = false;
+    let configurationReady = false;
     let lastSent = 0;
     let holdSendTimer = null;
     let interactionMode = 'click';
@@ -386,7 +386,7 @@
     joyButtonElements.forEach((button) => {
       const index = Number(button.dataset.buttonIndex);
       button.addEventListener('pointerdown', (event) => {
-        if (!joyModeEnabled) return;
+        if (!configurationReady) return;
         event.preventDefault();
 
         if (joyButtonTypes[index] === 'toggle') {
@@ -458,42 +458,39 @@
         if (Number.isSafeInteger(diameter) && diameter > 0) {
           pad.style.setProperty('--joystick-diameter', `${diameter}px`);
         }
-        joyModeEnabled = config.output_type === 'joy';
-        if (joyModeEnabled) {
-          const width = config.joy_button_width_px;
-          const height = config.joy_button_height_px;
-          if (Number.isSafeInteger(width) && width > 0) {
-            joyButtonGrid.style.setProperty('--button-width', `${width}px`);
-          }
-          if (Number.isSafeInteger(height) && height > 0) {
-            joyButtonGrid.style.setProperty('--button-height', `${height}px`);
-          }
-          const configuredTypes = config.joy_button_types;
-          const validTypes = Array.isArray(configuredTypes)
-            && configuredTypes.length === joyButtonElements.length
-            && configuredTypes.every((type) => type === 'press' || type === 'toggle');
-          if (!validTypes) throw new Error('Invalid Joy button configuration');
-
-          joyButtonTypes = configuredTypes;
-          const labels = config.joy_button_labels;
-          joyButtonElements.forEach((button, index) => {
-            const buttonType = joyButtonTypes[index];
-            const label = Array.isArray(labels) && typeof labels[index] === 'string'
-              && labels[index] ? labels[index] : String(index);
-            button.textContent = label;
-            button.dataset.buttonType = buttonType;
-            button.title = `${label} (button ${index}, ${buttonType})`;
-            button.setAttribute('aria-label', `${label}, button ${index}, ${buttonType}`);
-          });
+        const width = config.joy_button_width_px;
+        const height = config.joy_button_height_px;
+        if (Number.isSafeInteger(width) && width > 0) {
+          joyButtonGrid.style.setProperty('--button-width', `${width}px`);
         }
-        joyButtonGrid.hidden = !joyModeEnabled;
-        document.body.classList.toggle('joy-output', joyModeEnabled);
+        if (Number.isSafeInteger(height) && height > 0) {
+          joyButtonGrid.style.setProperty('--button-height', `${height}px`);
+        }
+        const configuredTypes = config.joy_button_types;
+        const validTypes = Array.isArray(configuredTypes)
+          && configuredTypes.length === joyButtonElements.length
+          && configuredTypes.every((type) => type === 'press' || type === 'toggle');
+        if (!validTypes) throw new Error('Invalid Joy button configuration');
+
+        joyButtonTypes = configuredTypes;
+        const labels = config.joy_button_labels;
+        joyButtonElements.forEach((button, index) => {
+          const buttonType = joyButtonTypes[index];
+          const label = Array.isArray(labels) && typeof labels[index] === 'string'
+            && labels[index] ? labels[index] : String(index);
+          button.textContent = label;
+          button.dataset.buttonType = buttonType;
+          button.title = `${label} (button ${index}, ${buttonType})`;
+          button.setAttribute('aria-label', `${label}, button ${index}, ${buttonType}`);
+        });
+        configurationReady = true;
+        joyButtonGrid.hidden = false;
         layoutReady = true;
         fitLayout();
-        if (joyModeEnabled) sendLatestTeleop();
+        sendLatestTeleop();
       })
       .catch(() => {
-        joyModeEnabled = false;
+        configurationReady = false;
         joyButtonGrid.hidden = true;
       });
   </script>
