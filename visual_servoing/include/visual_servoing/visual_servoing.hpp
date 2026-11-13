@@ -131,6 +131,7 @@ private:
   std::string topic_visual_servoing_on;
   std::string topic_visual_servoing_save;
   std::string topic_visual_servoing_clear;
+  std::string topic_visual_servoing_command;
   std::string ee_frame_;
   std::string camera_frame_;
   TransformHelper EEtoCAM;      // param #2 - calibration saved on yaml file

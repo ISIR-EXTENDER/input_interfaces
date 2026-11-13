@@ -8,4 +8,5 @@ visual_servoing:
     topic_visual_servoing_on : "/ui/visual_servoing/on"
     topic_visual_servoing_save : "/ui/visual_servoing/save"
     topic_visual_servoing_clear : "/ui/visual_servoing/clear"
+    topic_visual_servoing_command : "/visual_servoing_cartesian_command"
     

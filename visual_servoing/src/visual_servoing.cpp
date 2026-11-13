@@ -45,6 +45,8 @@ void VisualServoing::getParameters()
     topic_visual_servoing_save = this->get_parameter("topic_visual_servoing_save").as_string();
     this->declare_parameter("topic_visual_servoing_clear", "/visual_servoing/clear");
     topic_visual_servoing_clear = this->get_parameter("topic_visual_servoing_clear").as_string();
+    this->declare_parameter("topic_visual_servoing_command", "/visual_servoing_command");
+    topic_visual_servoing_command = this->get_parameter("topic_visual_servoing_command").as_string();
 
     // read saving apriltags position in Yaml
     std::string package_dir = ament_index_cpp::get_package_share_directory("visual_servoing");
@@ -86,7 +88,7 @@ void VisualServoing::initVariables()
 void VisualServoing::setupPublishers()
 {
     std::cout << "setupPublishers           [***   ] " << std::endl;
-    visual_servoing_velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/visual_servoing/velocity_command", 1);
+    visual_servoing_velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>(topic_visual_servoing_command, 1);
     tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 }
 
