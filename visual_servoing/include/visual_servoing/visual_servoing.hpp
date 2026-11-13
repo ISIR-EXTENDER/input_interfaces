@@ -115,7 +115,6 @@ private:
   extender_msgs::msg::SharedControlGoalArray latest_tag_detected;
 
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr visual_servoing_velocity_pub;
-  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr visual_servoing_error_pub;
 
   rclcpp::Subscription<extender_msgs::msg::SharedControlGoalArray>::SharedPtr apriltag_sub;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr visual_servoing_on_sub;

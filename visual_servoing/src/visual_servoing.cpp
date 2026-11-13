@@ -87,7 +87,6 @@ void VisualServoing::setupPublishers()
 {
     std::cout << "setupPublishers           [***   ] " << std::endl;
     visual_servoing_velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/visual_servoing/velocity_command", 1);
-    visual_servoing_error_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/visual_servoing/error_TAGtoTAGd", 1);
     tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 }
 
@@ -589,7 +588,7 @@ void VisualServoing::timer_callback(){
 
         old_velocity_of_ee_in_b_ = velocity_of_ee_in_b_;
         old_omega_of_ee_in_b_ = omega_of_ee_in_b_;
-
+        
         float error_position;
         error_position = abs(velocity_of_ee_in_b_[0]) + abs(velocity_of_ee_in_b_[1]) + abs(velocity_of_ee_in_b_[2]);
         float error_orientation;
@@ -598,6 +597,7 @@ void VisualServoing::timer_callback(){
         if (error_position<tolerance_linear && error_orientation<tolerance_angular && position_current_step<number_of_position_saved){
             position_current_step = position_current_step+1;
         }
+
         // publication
         //  outputs : 
         //      -> velocity_of_ee_in_b[3]
@@ -613,19 +613,6 @@ void VisualServoing::timer_callback(){
         vel_to_pub_.twist.angular.z = omega_of_ee_in_b_[2];
 
         visual_servoing_velocity_pub->publish(vel_to_pub_);
-
-        // Débug
-        geometry_msgs::msg::TwistStamped error_pub;
-        error_pub.header.stamp = this->now();
-        error_pub.header.frame_id = "base_link";
-
-        error_pub.twist.linear.x = abs(velocity_of_tagEtag_in_cam[0]/lambda);
-        error_pub.twist.linear.y = abs(velocity_of_tagEtag_in_cam[1]/lambda);
-        error_pub.twist.linear.z = abs(velocity_of_tagEtag_in_cam[2]/lambda);
-        error_pub.twist.angular.x = abs(CAM_theta_u[0]);
-        error_pub.twist.angular.y = abs(CAM_theta_u[1]);
-        error_pub.twist.angular.z = abs(CAM_theta_u[2]);
-        visual_servoing_error_pub->publish(error_pub);
     }
 }
 
