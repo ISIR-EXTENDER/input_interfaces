@@ -66,15 +66,17 @@ def _mapper_button_overrides(config_path):
         if mode not in ('toggle', 'trigger', 'hold', 'momentary', 'pressed'):
             mode = default_mode
         button_type = 'toggle' if mode in ('hold', 'momentary', 'pressed') else 'press'
-        if index in assignments and assignments[index][0] != button_type:
-            raise ValueError(
-                f'Button {index} has conflicting interface types for '
-                f'{assignments[index][1]} and {name}'
-            )
-        if index in assignments:
-            assignments[index][1].append(name)
-        else:
+        assignment = assignments.get(index)
+        if assignment is None:
             assignments[index] = (button_type, [name])
+        else:
+            assigned_type, names = assignment
+            if assigned_type != button_type:
+                raise ValueError(
+                    f'Button {index} has conflicting interface types for '
+                    f'{names} and {name}'
+                )
+            names.append(name)
     mapper_name = params.get('mapper_name', '')
     if not isinstance(mapper_name, str) or (
         mapper_name and not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]*', mapper_name)
