@@ -308,7 +308,7 @@
     }
 
     pad.addEventListener('pointerdown', (event) => {
-      if (interactionMode !== 'click') return;
+      if (interactionMode !== 'click' || event.button !== 0) return;
       dragging = true;
       pad.setPointerCapture(event.pointerId);
       updateJoystick(event.clientX, event.clientY, { forceSend: true });
@@ -351,6 +351,7 @@
     pad.addEventListener('pointerup', stop);
     pad.addEventListener('pointercancel', stop);
     pad.addEventListener('lostpointercapture', stop);
+    pad.addEventListener('contextmenu', () => stop());
 
     modeToggle.addEventListener('click', () => {
       interactionMode = interactionMode === 'click' ? 'hover' : 'click';
@@ -422,6 +423,7 @@
     }
 
     function handleWindowExit() {
+      stop();
       stopHover();
       releaseActivePressButtons();
     }
