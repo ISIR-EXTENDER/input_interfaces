@@ -26,15 +26,13 @@ import threading
 from typing import Optional
 
 from ament_index_python.packages import get_package_share_directory
-from extender_msgs.msg import TeleopCommand
 import rclpy
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import Joy
+from std_msgs.msg import String
 
 
-_OUTPUT_TYPE_TWIST = 'twist'
-_OUTPUT_TYPE_JOY = 'joy'
-_SUPPORTED_OUTPUT_TYPES = (_OUTPUT_TYPE_TWIST, _OUTPUT_TYPE_JOY)
 _JOY_BUTTON_COUNT = 12
 _JOY_BUTTON_TYPE_PRESS = 'press'
 _JOY_BUTTON_TYPE_TOGGLE = 'toggle'
@@ -44,15 +42,6 @@ _SUPPORTED_JOY_BUTTON_TYPES = (_JOY_BUTTON_TYPE_PRESS, _JOY_BUTTON_TYPE_TOGGLE)
 def _clamp(value: float, minimum: float, maximum: float) -> float:
     """Clamp a floating-point value to an inclusive range."""
     return max(minimum, min(maximum, value))
-
-
-def _validate_output_type(output_type: str) -> None:
-    """Reject unsupported output message selections."""
-    if output_type not in _SUPPORTED_OUTPUT_TYPES:
-        supported = ', '.join(_SUPPORTED_OUTPUT_TYPES)
-        raise ValueError(
-            f'Invalid output_type {output_type!r}; expected one of: {supported}'
-        )
 
 
 def _validate_joy_mapping(
@@ -132,29 +121,41 @@ def _validate_joy_button_types(button_types: object) -> list[str]:
     return validated_types
 
 
-def _build_runtime_config(output_type: str, joy_button_types: list[str]) -> dict:
-    """Build the browser-visible configuration for the selected output type."""
-    config = {'output_type': output_type}
-    if output_type == _OUTPUT_TYPE_JOY:
-        config['joy_button_types'] = _validate_joy_button_types(joy_button_types)
-    return config
+def _validate_button_size(width: object, height: object) -> tuple[int, int]:
+    """Require positive integer CSS pixel dimensions."""
+    for name, value in (('width_px', width), ('height_px', height)):
+        if type(value) is not int or value <= 0:
+            raise ValueError(f'joy_buttons.{name} must be a positive integer')
+    return width, height
 
 
-def _build_teleop_command(x: float, y: float) -> TeleopCommand:
-    """Build the existing translation TeleopCommand output."""
-    teleop_msg = TeleopCommand()
-    if hasattr(TeleopCommand, 'TRANSLATION'):
-        # Older generated message bindings may not expose constants; keep
-        # publishing useful twist data even then.
-        teleop_msg.mode = TeleopCommand.TRANSLATION
+def _validate_joystick_diameter(value: object) -> int:
+    """Require a positive integer joystick diameter in CSS pixels."""
+    if type(value) is not int or value <= 0:
+        raise ValueError('joystick_diameter_px must be a positive integer')
+    return value
 
-    teleop_msg.twist.linear.x = float(x)
-    teleop_msg.twist.linear.y = float(y)
-    teleop_msg.twist.linear.z = 0.0
-    teleop_msg.twist.angular.x = 0.0
-    teleop_msg.twist.angular.y = 0.0
-    teleop_msg.twist.angular.z = 0.0
-    return teleop_msg
+
+def _validate_interaction_mode(value: object) -> str:
+    """Validate the initial browser joystick interaction mode."""
+    if value not in ('click', 'mouseover'):
+        raise ValueError('interaction_mode must be click or mouseover')
+    return value
+
+
+def _build_runtime_config(
+    joy_button_types: list[str], joy_button_labels: list[str],
+    button_width: int, button_height: int, joystick_diameter: int, interaction_mode: str,
+) -> dict:
+    """Build the browser-visible joystick configuration."""
+    return {
+        'joystick_diameter_px': joystick_diameter,
+        'interaction_mode': interaction_mode,
+        'joy_button_types': _validate_joy_button_types(joy_button_types),
+        'joy_button_labels': joy_button_labels,
+        'joy_button_width_px': button_width,
+        'joy_button_height_px': button_height,
+    }
 
 
 def _build_joy_message(
@@ -211,6 +212,12 @@ class _TeleopHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         """Serve the web joystick page or its runtime output configuration."""
+        if self.path == '/active_mode':
+            if self.node is None:
+                self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
+                return
+            self._send_json({'active_mode': self.node.active_mode_})
+            return
         if self.path == '/config':
             if self.node is None:
                 self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
@@ -218,8 +225,12 @@ class _TeleopHandler(BaseHTTPRequestHandler):
 
             self._send_json(
                 _build_runtime_config(
-                    self.node.output_type_,
                     self.node.joy_button_types_,
+                    self.node.joy_button_labels_,
+                    self.node.joy_button_width_,
+                    self.node.joy_button_height_,
+                    self.node.joystick_diameter_,
+                    self.node.interaction_mode_,
                 )
             )
             return
@@ -241,6 +252,15 @@ class _TeleopHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         """Accept a joystick command payload and publish it through ROS."""
+        if self.path == '/layout-warning':
+            if self.node is None:
+                self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
+                return
+            self.node.get_logger().warning(
+                'Mouse joystick UI scaled down to fit the browser window.'
+            )
+            self._send_json({'ok': True})
+            return
         if self.path != '/teleop':
             self.send_error(404)
             return
@@ -257,13 +277,11 @@ class _TeleopHandler(BaseHTTPRequestHandler):
                 raise ValueError('payload must be a JSON object')
             x = float(payload.get('x', 0.0))
             y = float(payload.get('y', 0.0))
-            buttons = None
-            if self.node.output_type_ == _OUTPUT_TYPE_JOY:
-                buttons = (
-                    [0] * _JOY_BUTTON_COUNT
-                    if 'buttons' not in payload
-                    else _validate_joy_buttons(payload['buttons'])
-                )
+            buttons = (
+                [0] * _JOY_BUTTON_COUNT
+                if 'buttons' not in payload
+                else _validate_joy_buttons(payload['buttons'])
+            )
         except (ValueError, TypeError, json.JSONDecodeError):
             self._send_json({'ok': False, 'error': 'invalid_payload'}, status=400)
             return
@@ -288,54 +306,72 @@ class MouseJoystickInterface(Node):
         self.declare_parameter('host', '127.0.0.1')
         self.declare_parameter('port', 8765)
         self.declare_parameter('auto_open_browser', True)
-        self.declare_parameter('output_type', _OUTPUT_TYPE_TWIST)
-        self.declare_parameter('teleop_topic', 'teleop_cmd')
+        self.declare_parameter('interaction_mode', 'click')
+        self.declare_parameter('active_mode_topic', '/joystick_mapper/mouse/active_mode')
+        self.declare_parameter('joystick_diameter_px', 400)
         self.declare_parameter('joy_topic', '/joy')
         self.declare_parameter('joy_axis_count', 2)
         self.declare_parameter('joy_axes.x.index', 0)
         self.declare_parameter('joy_axes.x.scale', 1.0)
         self.declare_parameter('joy_axes.y.index', 1)
         self.declare_parameter('joy_axes.y.scale', 1.0)
+        self.declare_parameter('joy_buttons.width_px', 89)
+        self.declare_parameter('joy_buttons.height_px', 44)
         for button_index in range(_JOY_BUTTON_COUNT):
             self.declare_parameter(
                 f'joy_buttons.button_{button_index}.type',
                 _JOY_BUTTON_TYPE_PRESS,
             )
+            self.declare_parameter(f'joy_buttons.button_{button_index}.label', '')
 
         host = self.get_parameter('host').get_parameter_value().string_value
         port = self.get_parameter('port').get_parameter_value().integer_value
         auto_open_browser = (
             self.get_parameter('auto_open_browser').get_parameter_value().bool_value
         )
-        self.output_type_ = self.get_parameter('output_type').value
-        teleop_topic = self.get_parameter('teleop_topic').get_parameter_value().string_value
+        self.joystick_diameter_ = _validate_joystick_diameter(
+            self.get_parameter('joystick_diameter_px').value
+        )
+        self.interaction_mode_ = _validate_interaction_mode(
+            self.get_parameter('interaction_mode').value
+        )
         joy_topic = self.get_parameter('joy_topic').get_parameter_value().string_value
         self.joy_axis_count_ = self.get_parameter('joy_axis_count').value
         self.joy_x_axis_index_ = self.get_parameter('joy_axes.x.index').value
         self.joy_x_axis_scale_ = self.get_parameter('joy_axes.x.scale').value
         self.joy_y_axis_index_ = self.get_parameter('joy_axes.y.index').value
         self.joy_y_axis_scale_ = self.get_parameter('joy_axes.y.scale').value
+        self.joy_button_width_, self.joy_button_height_ = _validate_button_size(
+            self.get_parameter('joy_buttons.width_px').value,
+            self.get_parameter('joy_buttons.height_px').value,
+        )
         self.joy_button_types_ = [
             self.get_parameter(f'joy_buttons.button_{button_index}.type').value
             for button_index in range(_JOY_BUTTON_COUNT)
         ]
+        self.joy_button_labels_ = [
+            self.get_parameter(f'joy_buttons.button_{button_index}.label').value
+            or str(button_index)
+            for button_index in range(_JOY_BUTTON_COUNT)
+        ]
 
-        _validate_output_type(self.output_type_)
+        self.active_mode_ = None
+        qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
+                         reliability=ReliabilityPolicy.RELIABLE)
+        self.active_mode_sub_ = self.create_subscription(
+            String, self.get_parameter('active_mode_topic').value,
+            self._active_mode_callback, qos,
+        )
 
-        self.teleop_pub_ = None
-        self.joy_pub_ = None
-        if self.output_type_ == _OUTPUT_TYPE_TWIST:
-            self.teleop_pub_ = self.create_publisher(TeleopCommand, teleop_topic, 10)
-        else:
-            _validate_joy_mapping(
-                self.joy_axis_count_,
-                self.joy_x_axis_index_,
-                self.joy_x_axis_scale_,
-                self.joy_y_axis_index_,
-                self.joy_y_axis_scale_,
-            )
-            self.joy_button_types_ = _validate_joy_button_types(self.joy_button_types_)
-            self.joy_pub_ = self.create_publisher(Joy, joy_topic, 10)
+        _validate_joy_mapping(
+            self.joy_axis_count_,
+            self.joy_x_axis_index_,
+            self.joy_x_axis_scale_,
+            self.joy_y_axis_index_,
+            self.joy_y_axis_scale_,
+        )
+        self.joy_button_types_ = _validate_joy_button_types(self.joy_button_types_)
+        self.joy_pub_ = self.create_publisher(Joy, joy_topic, 10)
 
         self.web_root_ = self._resolve_web_root()
         # BaseHTTPRequestHandler instances are constructed by the HTTP server,
@@ -352,6 +388,10 @@ class MouseJoystickInterface(Node):
 
         if auto_open_browser:
             self._open_browser(self.url_)
+
+    def _active_mode_callback(self, msg: String) -> None:
+        """Store the latest mapper state for browser clients."""
+        self.active_mode_ = msg.data or None
 
     def _resolve_web_root(self) -> Path:
         """Return the directory containing the installed browser UI assets."""
@@ -382,23 +422,13 @@ class MouseJoystickInterface(Node):
         y: float,
         buttons: Optional[list[int]] = None,
     ) -> None:
-        """Publish normalized browser coordinates using the selected output type."""
-        if self.output_type_ == _OUTPUT_TYPE_JOY:
-            joy_msg = _build_joy_message(
-                x,
-                y,
-                self.get_clock().now().to_msg(),
-                self.joy_axis_count_,
-                self.joy_x_axis_index_,
-                self.joy_x_axis_scale_,
-                self.joy_y_axis_index_,
-                self.joy_y_axis_scale_,
-                buttons,
-            )
-            self.joy_pub_.publish(joy_msg)
-            return
-
-        self.teleop_pub_.publish(_build_teleop_command(x, y))
+        """Publish normalized browser coordinates as a Joy message."""
+        joy_msg = _build_joy_message(
+            x, y, self.get_clock().now().to_msg(), self.joy_axis_count_,
+            self.joy_x_axis_index_, self.joy_x_axis_scale_,
+            self.joy_y_axis_index_, self.joy_y_axis_scale_, buttons,
+        )
+        self.joy_pub_.publish(joy_msg)
 
     def shutdown_server(self) -> None:
         """Stop the HTTP server and release its listening socket."""

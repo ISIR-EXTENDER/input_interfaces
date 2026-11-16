@@ -44,9 +44,7 @@ See [`joystick_mapper/README.md`](joystick_mapper/README.md).
 
 Browser-based two-axis joystick for mouse input. It publishes normalized axes
 and twelve configurable press or toggle buttons as `sensor_msgs/msg/Joy` for use
-with `joystick_mapper`, or axes as `extender_msgs/msg/TeleopCommand` for existing
-teleoperation workflows. The supplied configuration publishes Joy messages on
-`/joy`.
+with `joystick_mapper`. The supplied configuration publishes on `/mouse_joy`.
 
 See [`mouse_joystick_interface/README.md`](mouse_joystick_interface/README.md)
 for installation and configuration instructions.

@@ -71,4 +71,10 @@ ament_export_dependencies(
   std_msgs
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+  ament_add_gtest(test_active_mode_topic test/test_active_mode_topic.cpp)
+  target_link_libraries(test_active_mode_topic ${PROJECT_NAME}_lib)
+endif()
+
 ament_package()

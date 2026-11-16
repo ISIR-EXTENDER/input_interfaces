@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <regex>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -82,6 +84,15 @@ namespace joystick_mapper
 
   } // namespace
 
+  std::string activeModeTopic(const std::string &mapper_name)
+  {
+    if (!mapper_name.empty() &&
+        !std::regex_match(mapper_name, std::regex("[A-Za-z_][A-Za-z0-9_]*")))
+      throw std::invalid_argument("mapper_name must be a valid ROS topic segment");
+    return mapper_name.empty() ? "/joystick_mapper/active_mode"
+                               : "/joystick_mapper/" + mapper_name + "/active_mode";
+  }
+
   JoystickMapper::JoystickMapper(const rclcpp::NodeOptions &options)
       : rclcpp::Node("joystick_mapper", options)
   {
@@ -92,8 +103,9 @@ namespace joystick_mapper
 
     twist_pub_ = create_publisher<geometry_msgs::msg::TwistStamped>(output_topic_, 10);
     mode_request_pub_ = create_publisher<std_msgs::msg::String>(mode_request_topic_, 10);
+    const auto mapper_name = declare_parameter<std::string>("mapper_name", "");
     active_mode_pub_ = create_publisher<std_msgs::msg::String>(
-        "/joystick_mapper/active_mode", rclcpp::QoS(1).transient_local().reliable());
+        activeModeTopic(mapper_name), rclcpp::QoS(1).transient_local().reliable());
     gripper_command_pub_ =
         create_publisher<std_msgs::msg::Float64MultiArray>(gripper_command_topic_, 10);
     publishActiveMode();
