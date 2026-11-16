@@ -421,14 +421,16 @@
       updateHoldSend();
     }
 
-    window.addEventListener('blur', stopHover);
-    window.addEventListener('pagehide', stopHover);
-    window.addEventListener('blur', releaseActivePressButtons);
-    window.addEventListener('pagehide', releaseActivePressButtons);
+    function handleWindowExit() {
+      stopHover();
+      releaseActivePressButtons();
+    }
+
+    window.addEventListener('blur', handleWindowExit);
+    window.addEventListener('pagehide', handleWindowExit);
     document.addEventListener('visibilitychange', () => {
       if (document.hidden) {
-        stopHover();
-        releaseActivePressButtons();
+        handleWindowExit();
       }
     });
 
