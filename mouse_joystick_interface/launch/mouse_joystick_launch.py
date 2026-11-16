@@ -136,7 +136,7 @@ def generate_launch_description() -> LaunchDescription:
     mapper_node = Node(
         package='joystick_mapper',
         executable='joystick_mapper_node',
-        name='joystick_mapper',
+        name='mouse_joystick_mapper',
         output='screen',
         parameters=[LaunchConfiguration('mapper_config_file')],
         condition=IfCondition(LaunchConfiguration('start_mapper')),
