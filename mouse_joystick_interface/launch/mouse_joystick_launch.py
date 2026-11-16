@@ -35,8 +35,8 @@ _BUTTON_DEFAULT_MODES = {
 _BUTTON_COUNT = 12
 
 
-def _mapper_button_overrides(config_path):
-    """Derive interface button types and labels from the mapper parameters."""
+def _mapper_parameters(config_path):
+    """Read the mapper parameters independently of the launched node name."""
     try:
         with open(config_path, encoding='utf-8') as config_file:
             config = yaml.safe_load(config_file)
@@ -52,6 +52,12 @@ def _mapper_button_overrides(config_path):
             'joystick_mapper.ros__parameters'
         ) from exc
 
+    return params
+
+
+def _mapper_button_overrides(config_path):
+    """Derive interface button types and labels from the mapper parameters."""
+    params = _mapper_parameters(config_path)
     assignments = {}
     for name, default_mode in _BUTTON_DEFAULT_MODES.items():
         index = params.get(f'{name}_button_index', -1)
@@ -94,18 +100,27 @@ def _mapper_button_overrides(config_path):
 
 
 def _interface_node(context):
-    """Apply mapper-derived parameters only when this launch starts the mapper."""
+    """Start the interface and, when requested, its configured mapper."""
     parameters = [LaunchConfiguration('config_file')]
+    nodes = []
     if IfCondition(LaunchConfiguration('start_mapper')).evaluate(context):
         config_path = LaunchConfiguration('mapper_config_file').perform(context)
         parameters.append(_mapper_button_overrides(config_path))
-    return [Node(
+        nodes.append(Node(
+            package='joystick_mapper',
+            executable='joystick_mapper_node',
+            name='mouse_joystick_mapper',
+            output='screen',
+            parameters=[_mapper_parameters(config_path)],
+        ))
+    nodes.insert(0, Node(
         package='mouse_joystick_interface',
         executable='mouse_joystick_server.py',
         name='mouse_joystick_interface',
         output='screen',
         parameters=parameters,
-    )]
+    ))
+    return nodes
 
 
 def generate_launch_description() -> LaunchDescription:
@@ -133,16 +148,7 @@ def generate_launch_description() -> LaunchDescription:
         'start_mapper', default_value='true',
         description='Start the mouse mapper; disable when bringup owns it',
     )
-    mapper_node = Node(
-        package='joystick_mapper',
-        executable='joystick_mapper_node',
-        name='mouse_joystick_mapper',
-        output='screen',
-        parameters=[LaunchConfiguration('mapper_config_file')],
-        condition=IfCondition(LaunchConfiguration('start_mapper')),
-    )
-
     return LaunchDescription([
         config_file_arg, start_mapper_arg, mapper_config_file_arg,
-        OpaqueFunction(function=_interface_node), mapper_node,
+        OpaqueFunction(function=_interface_node),
     ])
