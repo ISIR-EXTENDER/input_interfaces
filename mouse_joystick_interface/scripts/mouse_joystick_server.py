@@ -33,10 +33,8 @@ from sensor_msgs.msg import Joy
 from std_msgs.msg import String
 
 
-_OUTPUT_TYPE_TWIST = 'twist'
 _OUTPUT_TYPE_JOY = 'joy'
 _OUTPUT_TYPE_JOINT  = 'joint'
-_SUPPORTED_OUTPUT_TYPES = (_OUTPUT_TYPE_TWIST, _OUTPUT_TYPE_JOY)
 _JOY_BUTTON_COUNT = 12
 _JOINT_SLIDER_COUNT = 6
 _JOY_BUTTON_TYPE_PRESS = 'press'
@@ -314,13 +312,11 @@ class _TeleopHandler(BaseHTTPRequestHandler):
             )
             joint_go_button = payload.get('JointGoButton', False)
 
-            buttons = None
-            if self.node.output_type_ == _OUTPUT_TYPE_JOY:
-                buttons = (
-                    [0] * _JOY_BUTTON_COUNT
-                    if 'buttons' not in payload
-                    else _validate_joy_buttons(payload['buttons'])
-                )
+            buttons = (
+                [0] * _JOY_BUTTON_COUNT
+                if 'buttons' not in payload
+                else _validate_joy_buttons(payload['buttons'])
+            )
         except (ValueError, TypeError, json.JSONDecodeError):
             self._send_json({'ok': False, 'error': 'invalid_payload'}, status=400)
             return
@@ -397,6 +393,8 @@ class MouseJoystickInterface(Node):
             for button_index in range(_JOY_BUTTON_COUNT)
         ]
 
+        self.output_type_ = _OUTPUT_TYPE_JOY
+
         self.active_mode_ = None
         qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                          reliability=ReliabilityPolicy.RELIABLE)
@@ -407,19 +405,17 @@ class MouseJoystickInterface(Node):
 
         self.teleop_pub_ = None
         self.joy_pub_ = None
-        if self.output_type_ == _OUTPUT_TYPE_TWIST:
-            self.teleop_pub_ = self.create_publisher(TeleopCommand, teleop_topic, 10)
-        else:
-            _validate_joy_mapping(
-                self.joy_axis_count_,
-                self.joy_x_axis_index_,
-                self.joy_x_axis_scale_,
-                self.joy_y_axis_index_,
-                self.joy_y_axis_scale_,
-            )
-            self.joy_button_types_ = _validate_joy_button_types(self.joy_button_types_)
-            self.joy_pub_ = self.create_publisher(Joy, joy_topic, 10)
-            self.joint_pub_ = self.create_publisher(Joy, joint_topic, 10)
+
+        _validate_joy_mapping(
+            self.joy_axis_count_,
+            self.joy_x_axis_index_,
+            self.joy_x_axis_scale_,
+            self.joy_y_axis_index_,
+            self.joy_y_axis_scale_,
+        )
+        self.joy_button_types_ = _validate_joy_button_types(self.joy_button_types_)
+        self.joy_pub_ = self.create_publisher(Joy, joy_topic, 10)
+        self.joint_pub_ = self.create_publisher(Joy, joint_topic, 10)
 
         self.web_root_ = self._resolve_web_root()
         # BaseHTTPRequestHandler instances are constructed by the HTTP server,
