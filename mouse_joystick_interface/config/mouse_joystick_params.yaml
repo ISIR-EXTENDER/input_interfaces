@@ -49,6 +49,28 @@ mouse_joystick_interface:
         index: 5
         scale: 1.0
 
+    joint_states_topic: "/joint_states"
+    joint_axis_count: 6
+    joint_axes:
+      joint_1:
+        index: 0
+        scale: 1.0
+      joint_2:
+        index: 1
+        scale: 1.0
+      joint_3:
+        index: 2
+        scale: 1.0
+      joint_4:
+        index: 3
+        scale: 1.0
+      joint_5:
+        index: 4
+        scale: 1.0
+      joint_6:
+        index: 5
+        scale: 1.0
+
       
     # Per-button interaction behavior: "press" is momentary, while "toggle"
     # latches the button on or off on each pointer press.

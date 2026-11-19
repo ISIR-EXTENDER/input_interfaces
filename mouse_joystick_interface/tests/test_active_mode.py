@@ -59,3 +59,24 @@ def test_active_mode_updates_and_is_exposed():
         MouseJoystickInterface._active_mode_callback(node, Mock(data=name))
         handler.do_GET()
         handler._send_json.assert_called_with({'active_mode': name or None})
+
+
+def test_robot_position_updates_and_is_exposed():
+    node = Mock()
+    node.robot_position = None
+    handler = object.__new__(_TeleopHandler)
+    handler.path = '/robot_position'
+    handler.node = node
+    handler._send_json = Mock()
+
+    handler.do_GET()
+    handler._send_json.assert_called_with({'robot_position': None})
+
+    msg = Mock()
+    msg.name = ['joint_2', 'joint_1']
+    msg.position = [1.0, 0.5]
+    MouseJoystickInterface._robot_position_callback(node, msg)
+    handler.do_GET()
+    handler._send_json.assert_called_with({
+        'robot_position': {'joint_2': 1.0, 'joint_1': 0.5},
+    })

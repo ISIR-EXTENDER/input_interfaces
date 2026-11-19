@@ -8,13 +8,12 @@
   <style>
     body {
       display: flex;
-      height: 100vh;
       margin: 2% 2% 10% 10%;
       background: #111;
       color: #f5f5f5;
       font-family: sans-serif;
       user-select: none;
-      gap:15%;
+      gap: 15%;
       justify-content: space-evenly;
       overflow: hidden;
     }
@@ -24,8 +23,6 @@
       flex-direction: column;
       align-items: center;
       gap: 12px;
-
-      
     }
 
     .pad {
@@ -71,8 +68,7 @@
     .button-grid {
       --button-width: 89px;
       --button-height: 44px;
-      width: calc(var(--button-width) + var(--button-width) +
-                  var(--button-width) + var(--button-width) + 24px);
+      width: calc(var(--button-width) + var(--button-width) + var(--button-width) + var(--button-width) + 24px);
       display: grid;
       grid-template-columns: repeat(4, minmax(0, 1fr));
       gap: 8px;
@@ -146,14 +142,13 @@
       border-radius: 10pt;
       overflow: scroll;
       display: flex;
+      justify-content: space-evenly;
       flex-direction: column;
       width: 40%;
-      height: 60rem;
+      height: auto;
       margin-right: 8rem;
       padding: 1rem 2rem 2rem 2rem;
       gap: 0.2rem;
-
-
     }
 
     .joint-value {
@@ -163,7 +158,8 @@
       text-align: center;
       padding: 5pt;
       border-radius: 15pt;
-      width: 2rem;
+      width: 4rem;
+      box-sizing: border-box;
     }
 
     .joint-button {
@@ -177,12 +173,70 @@
       font-weight: 600;
       cursor: pointer;
       touch-action: none;
-
     }
 
     .joint-button.active {
       border-color: #3fa9f5;
       background: #176da8;
+    }
+
+    .joint-control {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .joint-track {
+      flex: 1;
+      min-width: 0;
+      position: relative;
+    }
+
+    .joint-slider {
+      width: 100%;
+      height: 8px;
+      border-radius: 5px;
+      background: #444;
+      cursor: pointer;
+      touch-action: none;
+    }
+
+    .joint-slider:focus {
+      outline: none;
+    }
+
+    .joint-marker {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 4px;
+      border-radius: 2px;
+      height: 20px;
+      background: #ff5252;
+      transform: translate(-50%, -50%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    .joint-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .joint-refresh-button,
+    .joint-refresh-all-button {
+      padding: 6px 10px;
+      border: 1px solid #666;
+      border-radius: 6px;
+      background: #2a2a2a;
+      color: #f5f5f5;
+      cursor: pointer;
+    }
+
+    .joint-refresh-all-button {
+      align-self: flex-end;
+      width: fit-content;
     }
   </style>
 </head>
@@ -210,33 +264,84 @@
       <button class="joy-button" data-button-index="11" aria-pressed="false">11</button>
     </div>
   </div>
-  
+
   <div id="sliders" class="sliders">
     <h2 class="centered">Joint Sliders</h2>
-    <h3>Joint 1</h3>
-    <input class="joint-slider" type="range" value="0" min="-180" max="180" step="1"
-      oninput="this.nextElementSibling.value = this.value">
-    <input class="joint-value" value="0"></input>
-    <h3>Joint 2</h3>
-    <input class="joint-slider" type="range" value="0" min="-180" max="180" step="1"
-      oninput="this.nextElementSibling.value = this.value">
-    <input class="joint-value" value="0"></input>
-    <h3>Joint 3</h3>
-    <input class="joint-slider" type="range" value="0" min="-270" max="90" step="1"
-      oninput="this.nextElementSibling.value = this.value">
-    <input class="joint-value" value="0"></input>
-    <h3>Joint 4</h3>
-    <input class="joint-slider" type="range" value="0" min="-180" max="180" step="1"
-      oninput="this.nextElementSibling.value = this.value">
-    <input class="joint-value" value="0"></input>
-    <h3>Joint 5</h3>
-    <input class="joint-slider" type="range" value="0" min="-180" max="180" step="1"
-      oninput="this.nextElementSibling.value = this.value">
-    <input class="joint-value" value="0"></input>
-    <h3>Joint 6</h3>
-    <input class="joint-slider" type="range" value="0" min="-180" max="180" step="1"
-      oninput="this.nextElementSibling.value = this.value">
-    <input class="joint-value" value="0"></input>
+    <button type="button" id="joint-refresh-all-button" class="joint-refresh-all-button">
+      Refresh all
+    </button>
+    <div class="joint-title">
+      <h3>Joint 1</h3>
+      <button type="button" class="joint-refresh-button" data-joint-index="0"
+        aria-label="Refresh Joint 1 position">Refresh</button>
+    </div>
+    <div class="joint-control">
+      <div class="joint-track">
+        <input class="joint-slider" type="range" value="0" min="-166" max="166" step="1">
+        <span class="joint-marker" aria-hidden="true" hidden></span>
+      </div>
+      <input class="joint-value" type="number" value="0" step="1" aria-label="Joint 1 position in degrees">
+    </div>
+    <div class="joint-title">
+      <h3>Joint 2</h3>
+      <button type="button" class="joint-refresh-button" data-joint-index="1"
+        aria-label="Refresh Joint 2 position">Refresh</button>
+    </div>
+    <div class="joint-control">
+      <div class="joint-track">
+        <input class="joint-slider" type="range" value="0" min="-122" max="122" step="1">
+        <span class="joint-marker" aria-hidden="true" hidden></span>
+      </div>
+      <input class="joint-value" type="number" value="0" step="1" aria-label="Joint 2 position in degrees">
+    </div>
+    <div class="joint-title">
+      <h3>Joint 3</h3>
+      <button type="button" class="joint-refresh-button" data-joint-index="2"
+        aria-label="Refresh Joint 3 position">Refresh</button>
+    </div>
+    <div class="joint-control">
+      <div class="joint-track">
+        <input class="joint-slider" type="range" value="0" min="-166" max="166" step="1">
+        <span class="joint-marker" aria-hidden="true" hidden></span>
+      </div>
+      <input class="joint-value" type="number" value="0" step="1" aria-label="Joint 3 position in degrees">
+    </div>
+    <div class="joint-title">
+      <h3>Joint 4</h3>
+      <button type="button" class="joint-refresh-button" data-joint-index="3"
+        aria-label="Refresh Joint 4 position">Refresh</button>
+    </div>
+    <div class="joint-control">
+      <div class="joint-track">
+        <input class="joint-slider" type="range" value="0" min="-166" max="166" step="1">
+        <span class="joint-marker" aria-hidden="true" hidden></span>
+      </div>
+      <input class="joint-value" type="number" value="0" step="1" aria-label="Joint 4 position in degrees">
+    </div>
+    <div class="joint-title">
+      <h3>Joint 5</h3>
+      <button type="button" class="joint-refresh-button" data-joint-index="4"
+        aria-label="Refresh Joint 5 position">Refresh</button>
+    </div>
+    <div class="joint-control">
+      <div class="joint-track">
+        <input class="joint-slider" type="range" value="0" min="-97" max="97" step="1">
+        <span class="joint-marker" aria-hidden="true" hidden></span>
+      </div>
+      <input class="joint-value" type="number" value="0" step="1" aria-label="Joint 5 position in degrees">
+    </div>
+    <div class="joint-title">
+      <h3>Joint 6</h3>
+      <button type="button" class="joint-refresh-button" data-joint-index="5"
+        aria-label="Refresh Joint 6 position">Refresh</button>
+    </div>
+    <div class="joint-control">
+      <div class="joint-track">
+        <input class="joint-slider" type="range" value="0" min="-166" max="166" step="1">
+        <span class="joint-marker" aria-hidden="true" hidden></span>
+      </div>
+      <input class="joint-value" type="number" value="0" step="1" aria-label="Joint 6 position in degrees">
+    </div>
     <button id="joint-button" class="joint-button" aria-pressed="false">GO</button>
   </div>
 
@@ -250,7 +355,11 @@
     const joyButtonGrid = document.getElementById('joyButtons');
     const joyButtonElements = Array.from(document.querySelectorAll('.joy-button'));
     const jointSliderElements = Array.from(document.querySelectorAll('.joint-slider'));
+    const jointValueElements = Array.from(document.querySelectorAll('.joint-value'));
+    const jointMarkerElements = Array.from(document.querySelectorAll('.joint-marker'));
     const jointGoButton = document.getElementById('joint-button');
+    const jointRefreshButtons = Array.from(document.querySelectorAll('.joint-refresh-button'));
+    const jointRefreshAllButton = document.getElementById('joint-refresh-all-button');
 
     let dragging = false;
     let hoverActive = false;
@@ -266,6 +375,7 @@
     const joyButtonState = Array(12).fill(0);
     const jointSlidersState = Array(6).fill(0);
     const activePressPointers = new Map();
+    let robotPosition = null;
     let JointGoButtonState = false;
 
     // Publish at roughly 30 Hz while the joystick or any Joy button is held.
@@ -282,7 +392,7 @@
       layout.style.setProperty('--layout-scale', layoutScale);
       const reduced = layoutScale < 0.999999;
       if (reduced && !layoutReduced) {
-        fetch('/layout-warning', { method: 'POST' }).catch(() => {});
+        fetch('/layout-warning', { method: 'POST' }).catch(() => { });
       }
       layoutReduced = reduced;
     }
@@ -297,8 +407,7 @@
      * @param {number} y - Normalized left/right command in [-1, 1].
      */
     function sendTeleop(x, y) {
-      console.log(JointGoButtonState);
-        fetch('/teleop', {
+      fetch('/teleop', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ x, y, buttons: joyButtonState, sliders: jointSlidersState, JointGoButton: JointGoButtonState }),
@@ -471,6 +580,33 @@
     jointGoButton.addEventListener('pointerdown', (event) => { setJointGoButtonState(true); })
     jointGoButton.addEventListener('pointerup', (event) => { setJointGoButtonState(false); })
 
+    jointSliderElements.forEach((slider, index) => {
+      const valueInput = jointValueElements[index];
+      valueInput.min = slider.min;
+      valueInput.max = slider.max;
+      valueInput.step = slider.step;
+
+      slider.addEventListener('input', () => {
+        valueInput.value = slider.value;
+      });
+
+      valueInput.addEventListener('input', () => {
+        const numericValue = valueInput.valueAsNumber;
+        if (!Number.isFinite(numericValue)) return;
+
+        slider.value = String(clamp(
+          Math.round(numericValue),
+          Number(slider.min),
+          Number(slider.max),
+        ));
+        valueInput.value = slider.value;
+      });
+
+      valueInput.addEventListener('change', () => {
+        if (valueInput.value === '') valueInput.value = slider.value;
+      });
+    });
+
     function setJointSlidersState() {
 
       for (let index = 0; index < jointSlidersState.length; index++) {
@@ -481,7 +617,26 @@
       updateHoldSend();
     }
 
+    function refreshJointSlider(index) {
+      if (!Number.isInteger(index) || index < 0 || index >= jointSliderElements.length) return;
 
+      const positionRadians = robotPosition?.[`joint_${index + 1}`];
+      if (!Number.isFinite(positionRadians)) return;
+
+      const slider = jointSliderElements[index];
+      const positionDegrees = Math.round(positionRadians * 180 / Math.PI);
+      slider.value = String(clamp(positionDegrees, Number(slider.min), Number(slider.max)));
+      slider.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+
+    jointRefreshButtons.forEach((button) => {
+      const index = Number(button.dataset.jointIndex);
+      button.addEventListener('click', () => refreshJointSlider(index));
+    });
+
+    jointRefreshAllButton.addEventListener('click', () => {
+      jointSliderElements.forEach((_, index) => refreshJointSlider(index));
+    });
 
 
     /** Release a press-type button owned by a pointer, including cancellations. */
@@ -554,10 +709,40 @@
         .then((state) => {
           activeMode.textContent = `Mode: ${typeof state.active_mode === 'string' && state.active_mode ? state.active_mode : '—'}`;
         })
-        .catch(() => {})
+        .catch(() => { })
         .finally(() => setTimeout(pollActiveMode, 500));
     }
     pollActiveMode();
+
+    function pollRobotPosition() {
+      fetch('/robot_position', { cache: 'no-store' })
+        .then((response) => {
+          if (!response.ok) throw new Error('Failed to load robot position');
+          return response.json();
+        })
+        .then((state) => {
+          robotPosition = state.robot_position;
+          jointSliderElements.forEach((slider, index) => {
+            const marker = jointMarkerElements[index];
+            const positionRadians = robotPosition?.[`joint_${index + 1}`];
+            if (!Number.isFinite(positionRadians)) {
+              marker.hidden = true;
+              return;
+            }
+
+            const positionDegrees = positionRadians * 180 / Math.PI;
+            const min = Number(slider.min);
+            const max = Number(slider.max);
+            const ratio = clamp((positionDegrees - min) / (max - min), 0, 1);
+            marker.style.left = `${ratio * 100}%`;
+            marker.title = `Robot position: ${positionDegrees.toFixed(1)}°`;
+            marker.hidden = false;
+          });
+        })
+        .catch(() => { })
+        .finally(() => setTimeout(pollRobotPosition, 100));
+    }
+    pollRobotPosition();
 
     fetch('/config', { cache: 'no-store' })
       .then((response) => {

@@ -28,8 +28,8 @@ from typing import Optional
 from ament_index_python.packages import get_package_share_directory
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Joy
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+from sensor_msgs.msg import Joy, JointState
 from std_msgs.msg import String
 
 
@@ -248,6 +248,12 @@ class _TeleopHandler(BaseHTTPRequestHandler):
                 return
             self._send_json({'active_mode': self.node.active_mode_})
             return
+        if self.path == '/robot_position':
+            if self.node is None:
+                self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
+                return
+            self._send_json({'robot_position': self.node.robot_position})
+            return
         if self.path == '/config':
             if self.node is None:
                 self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
@@ -394,13 +400,19 @@ class MouseJoystickInterface(Node):
         ]
 
         self.output_type_ = _OUTPUT_TYPE_JOY
-
         self.active_mode_ = None
+        self.robot_position: Optional[dict[str, float]] = None
         qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                          reliability=ReliabilityPolicy.RELIABLE)
         self.active_mode_sub_ = self.create_subscription(
             String, self.get_parameter('active_mode_topic').value,
             self._active_mode_callback, qos,
+        )
+        self.robot_position_sub_ = self.create_subscription(
+            JointState,
+            '/joint_states',
+            self._robot_position_callback,
+            qos_profile_sensor_data,
         )
 
         self.teleop_pub_ = None
@@ -436,6 +448,17 @@ class MouseJoystickInterface(Node):
     def _active_mode_callback(self, msg: String) -> None:
         """Store the latest mapper state for browser clients."""
         self.active_mode_ = msg.data or None
+
+    def _robot_position_callback(self, msg: JointState) -> None:
+        """Store the latest joint positions in radians, keyed by joint name."""
+        if len(msg.name) != len(msg.position):
+            self.get_logger().warning(
+                'Ignoring joint state message with '
+                f'{len(msg.name)} names and {len(msg.position)} positions'
+            )
+            return
+
+        self.robot_position = dict(zip(msg.name, msg.position))
 
     def _resolve_web_root(self) -> Path:
         """Return the directory containing the installed browser UI assets."""
@@ -495,7 +518,6 @@ class MouseJoystickInterface(Node):
 
         self.output_type_= _OUTPUT_TYPE_JOINT if JointGoButton else _OUTPUT_TYPE_JOY
         return
-        self.teleop_pub_.publish(_build_teleop_command(x, y))
 
     def shutdown_server(self) -> None:
         """Stop the HTTP server and release its listening socket."""
