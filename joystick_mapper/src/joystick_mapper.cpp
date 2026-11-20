@@ -158,7 +158,7 @@ namespace joystick_mapper
         declareButton("local_mode_button_index", -1, ButtonActivationMode::TOGGLE);
     jaco_button_ = declareButton("jaco_button_index", -1, ButtonActivationMode::TOGGLE);
     snake_button_ = declareButton("snake_button_index", -1, ButtonActivationMode::TOGGLE);
-    home_button_ = declareButton("home_button_index", -1, ButtonActivationMode::TRIGGER);
+    home_button_ = declareButton("home_button_index", -1, ButtonActivationMode::HOLD);
     gripper_button_ = declareButton("gripper_button_index", -1, ButtonActivationMode::TOGGLE);
     scale_increase_button_ = declareButton("scale_increase_button_index", -1, ButtonActivationMode::TRIGGER); 
     scale_decrease_button_ = declareButton("scale_decrease_button_index", -1, ButtonActivationMode::TRIGGER); 
