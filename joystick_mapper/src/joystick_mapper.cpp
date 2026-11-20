@@ -19,6 +19,8 @@ namespace joystick_mapper
     constexpr char kGeometricJaco[] = "jaco";
     constexpr char kGeometricSnake[] = "snake";
     constexpr char kHomeRequest[] = "behaviour/joint_target/home";
+    constexpr char kWristReturnRequest[] = "behaviour/joint_target/wrist_return";
+
     constexpr char kPassthroughRequest[] = "behaviour/passthrough";
 
     std::string normalizeStateName(std::string state)
@@ -166,6 +168,7 @@ namespace joystick_mapper
     scale_increase_button_ = declareButton("scale_increase_button_index", -1, ButtonActivationMode::TRIGGER); 
     scale_decrease_button_ = declareButton("scale_decrease_button_index", -1, ButtonActivationMode::TRIGGER); 
     
+
     warnOnDuplicateButtonIndexes();
 
     if (deadzone_ < 0.0 || deadzone_ >= 1.0)
@@ -282,6 +285,7 @@ namespace joystick_mapper
         {"jaco_button_index", jaco_button_.button_index},
         {"snake_button_index", snake_button_.button_index},
         {"home_button_index", home_button_.button_index},
+        {"wrist_return_button_index", wrist_return_button_.button_index},
         {"gripper_button_index", gripper_button_.button_index},
         {"scale_increase_button_index", scale_increase_button_.button_index},
         {"scale_decrease_button_index", scale_decrease_button_.button_index}
@@ -354,6 +358,7 @@ namespace joystick_mapper
     handleStateButton(msg, snake_button_, current_geometric_state_, kGeometricSnake,
                       kGeometricBoth, kGeometricScope);
     handleCommandButton(msg, home_button_, kHomeRequest, kPassthroughRequest);
+    handleCommandButton(msg, wrist_return_button_, kWristReturnRequest, kPassthroughRequest);
     handleGripperButton(msg);
     handleScaleIncreaseButton(msg);
     handleScaleDecreaseButton(msg);
