@@ -28,12 +28,15 @@ from typing import Optional
 from ament_index_python.packages import get_package_share_directory
 import rclpy
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from sensor_msgs.msg import Joy
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy, qos_profile_sensor_data
+from sensor_msgs.msg import Joy, JointState
 from std_msgs.msg import String
 
 
+_OUTPUT_TYPE_JOY = 'joy'
+_OUTPUT_TYPE_JOINT  = 'joint'
 _JOY_BUTTON_COUNT = 12
+_JOINT_SLIDER_COUNT = 6
 _JOY_BUTTON_TYPE_PRESS = 'press'
 _JOY_BUTTON_TYPE_TOGGLE = 'toggle'
 _SUPPORTED_JOY_BUTTON_TYPES = (_JOY_BUTTON_TYPE_PRESS, _JOY_BUTTON_TYPE_TOGGLE)
@@ -100,6 +103,22 @@ def _validate_joy_buttons(buttons: object) -> list[int]:
         raise ValueError('buttons entries must be integers containing only 0 or 1')
 
     return list(buttons)
+
+
+def _validate_joint_sliders(sliders: object) -> list[float]:
+    """Return a validated six-entry joint slider array."""
+    if not isinstance(sliders, list) or len(sliders) != _JOINT_SLIDER_COUNT:
+        raise ValueError(
+            f'sliders must be a list of exactly {_JOINT_SLIDER_COUNT} entries'
+        )
+
+    if any(
+        type(value) not in (int, float) or not math.isfinite(value)
+        for value in sliders
+    ):
+        raise ValueError('sliders entries must be finite numbers')
+
+    return [float(value) for value in sliders]
 
 
 def _validate_joy_button_types(button_types: object) -> list[str]:
@@ -186,6 +205,17 @@ def _build_joy_message(
     )
     return joy_msg
 
+def _build_joint_message(
+    stamp,
+    sliders: list[float],
+    JointGoButton: bool,       
+) -> Joy:
+    joint_msg = Joy()
+    joint_msg.header.stamp = stamp
+    joint_msg.axes = sliders
+    joint_msg.buttons = [JointGoButton]
+    return joint_msg
+
 
 class _TeleopHandler(BaseHTTPRequestHandler):
     """HTTP handler serving the joystick UI and receiving teleop updates."""
@@ -217,6 +247,12 @@ class _TeleopHandler(BaseHTTPRequestHandler):
                 self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
                 return
             self._send_json({'active_mode': self.node.active_mode_})
+            return
+        if self.path == '/robot_position':
+            if self.node is None:
+                self._send_json({'ok': False, 'error': 'server_not_ready'}, status=503)
+                return
+            self._send_json({'robot_position': self.node.robot_position})
             return
         if self.path == '/config':
             if self.node is None:
@@ -277,6 +313,11 @@ class _TeleopHandler(BaseHTTPRequestHandler):
                 raise ValueError('payload must be a JSON object')
             x = float(payload.get('x', 0.0))
             y = float(payload.get('y', 0.0))
+            joint_sliders_state = _validate_joint_sliders(
+                payload.get('sliders', [0.0] * _JOINT_SLIDER_COUNT)
+            )
+            joint_go_button = payload.get('JointGoButton', False)
+
             buttons = (
                 [0] * _JOY_BUTTON_COUNT
                 if 'buttons' not in payload
@@ -288,8 +329,9 @@ class _TeleopHandler(BaseHTTPRequestHandler):
 
         x = max(-1.0, min(1.0, x))
         y = max(-1.0, min(1.0, y))
-        self.node.publish_teleop_command(x, y, buttons)
+        self.node.publish_teleop_command(x, y, buttons, joint_sliders_state, joint_go_button)
         self._send_json({'ok': True})
+        
 
     def log_message(self, fmt: str, *args: object) -> None:
         """Suppress the default per-request HTTP access log."""
@@ -310,6 +352,7 @@ class MouseJoystickInterface(Node):
         self.declare_parameter('active_mode_topic', '/joystick_mapper/mouse/active_mode')
         self.declare_parameter('joystick_diameter_px', 400)
         self.declare_parameter('joy_topic', '/joy')
+        self.declare_parameter('joint_topic', '/joint_target_sliders')
         self.declare_parameter('joy_axis_count', 2)
         self.declare_parameter('joy_axes.x.index', 0)
         self.declare_parameter('joy_axes.x.scale', 1.0)
@@ -336,6 +379,7 @@ class MouseJoystickInterface(Node):
             self.get_parameter('interaction_mode').value
         )
         joy_topic = self.get_parameter('joy_topic').get_parameter_value().string_value
+        joint_topic = self.get_parameter('joint_topic').get_parameter_value().string_value
         self.joy_axis_count_ = self.get_parameter('joy_axis_count').value
         self.joy_x_axis_index_ = self.get_parameter('joy_axes.x.index').value
         self.joy_x_axis_scale_ = self.get_parameter('joy_axes.x.scale').value
@@ -355,13 +399,24 @@ class MouseJoystickInterface(Node):
             for button_index in range(_JOY_BUTTON_COUNT)
         ]
 
+        self.output_type_ = _OUTPUT_TYPE_JOY
         self.active_mode_ = None
+        self.robot_position: Optional[dict[str, float]] = None
         qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL,
                          reliability=ReliabilityPolicy.RELIABLE)
         self.active_mode_sub_ = self.create_subscription(
             String, self.get_parameter('active_mode_topic').value,
             self._active_mode_callback, qos,
         )
+        self.robot_position_sub_ = self.create_subscription(
+            JointState,
+            '/joint_states',
+            self._robot_position_callback,
+            qos_profile_sensor_data,
+        )
+
+        self.teleop_pub_ = None
+        self.joy_pub_ = None
 
         _validate_joy_mapping(
             self.joy_axis_count_,
@@ -372,6 +427,7 @@ class MouseJoystickInterface(Node):
         )
         self.joy_button_types_ = _validate_joy_button_types(self.joy_button_types_)
         self.joy_pub_ = self.create_publisher(Joy, joy_topic, 10)
+        self.joint_pub_ = self.create_publisher(Joy, joint_topic, 10)
 
         self.web_root_ = self._resolve_web_root()
         # BaseHTTPRequestHandler instances are constructed by the HTTP server,
@@ -392,6 +448,17 @@ class MouseJoystickInterface(Node):
     def _active_mode_callback(self, msg: String) -> None:
         """Store the latest mapper state for browser clients."""
         self.active_mode_ = msg.data or None
+
+    def _robot_position_callback(self, msg: JointState) -> None:
+        """Store the latest joint positions in radians, keyed by joint name."""
+        if len(msg.name) != len(msg.position):
+            self.get_logger().warning(
+                'Ignoring joint state message with '
+                f'{len(msg.name)} names and {len(msg.position)} positions'
+            )
+            return
+
+        self.robot_position = dict(zip(msg.name, msg.position))
 
     def _resolve_web_root(self) -> Path:
         """Return the directory containing the installed browser UI assets."""
@@ -421,14 +488,36 @@ class MouseJoystickInterface(Node):
         x: float,
         y: float,
         buttons: Optional[list[int]] = None,
+        sliders: Optional[list[float]] = None,
+        JointGoButton: bool = False
     ) -> None:
-        """Publish normalized browser coordinates as a Joy message."""
-        joy_msg = _build_joy_message(
-            x, y, self.get_clock().now().to_msg(), self.joy_axis_count_,
-            self.joy_x_axis_index_, self.joy_x_axis_scale_,
-            self.joy_y_axis_index_, self.joy_y_axis_scale_, buttons,
-        )
-        self.joy_pub_.publish(joy_msg)
+        """Publish normalized browser coordinates using the selected output type."""
+
+
+        if self.output_type_ == _OUTPUT_TYPE_JOY:
+            joy_msg = _build_joy_message(
+                x,
+                y,
+                self.get_clock().now().to_msg(),
+                self.joy_axis_count_,
+                self.joy_x_axis_index_,
+                self.joy_x_axis_scale_,
+                self.joy_y_axis_index_,
+                self.joy_y_axis_scale_,
+                buttons,
+            )
+            self.joy_pub_.publish(joy_msg)
+            
+        elif self.output_type_== _OUTPUT_TYPE_JOINT:
+            joint_msg = _build_joint_message(
+                self.get_clock().now().to_msg(),
+                sliders,
+                JointGoButton,
+            )
+            self.joint_pub_.publish(joint_msg)
+
+        self.output_type_= _OUTPUT_TYPE_JOINT if JointGoButton else _OUTPUT_TYPE_JOY
+        return
 
     def shutdown_server(self) -> None:
         """Stop the HTTP server and release its listening socket."""
