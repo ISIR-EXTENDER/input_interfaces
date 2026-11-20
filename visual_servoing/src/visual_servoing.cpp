@@ -45,14 +45,15 @@ void VisualServoing::getParameters()
     topic_visual_servoing_save = this->get_parameter("topic_visual_servoing_save").as_string();
     this->declare_parameter("topic_visual_servoing_clear", "/visual_servoing/clear");
     topic_visual_servoing_clear = this->get_parameter("topic_visual_servoing_clear").as_string();
+    this->declare_parameter("topic_visual_servoing_command", "/visual_servoing_command");
+    topic_visual_servoing_command = this->get_parameter("topic_visual_servoing_command").as_string();
 
     // read saving apriltags position in Yaml
     std::string package_dir = ament_index_cpp::get_package_share_directory("visual_servoing");
     declare_parameter<std::string>("yaml_path_saved_tag_goals", package_dir + "/config/saved_tag_goals.yaml");
     yaml_path_saved_tag_goals = get_parameter("yaml_path_saved_tag_goals").as_string();
-    declare_parameter<std::string>("yaml_path_transform_EEtoCAM", package_dir + "/config/handeye_tf_" + robot_type +"_" + camera_type + ".yaml");
-    yaml_path_transform_EEtoCAM = get_parameter("yaml_path_transform_EEtoCAM").as_string();
-
+    yaml_path_transform_EEtoCAM = package_dir + "/config/handeye_tf_" + robot_type +"_" + camera_type + ".yaml";
+    
     // get qontrol_controller v_max param
     rclcpp::SyncParametersClient param_client(this, "/qontrol_explorer");
 
@@ -78,13 +79,16 @@ void VisualServoing::initVariables()
     r_CAMtoTAGd.y() = 0;
     r_CAMtoTAGd.z() = 0;
     r_CAMtoTAGd.w() = 0;
+    old_velocity_of_ee_in_b_.resize(3);
+    old_velocity_of_ee_in_b_.setZero();
+    old_omega_of_ee_in_b_.resize(3);
+    old_omega_of_ee_in_b_.setZero();
 }
 
 void VisualServoing::setupPublishers()
 {
     std::cout << "setupPublishers           [***   ] " << std::endl;
-    visual_servoing_velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/visual_servoing/velocity_command", 1);
-    visual_servoing_error_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>("/visual_servoing/error_TAGtoTAGd", 1);
+    visual_servoing_velocity_pub = this->create_publisher<geometry_msgs::msg::TwistStamped>(topic_visual_servoing_command, 1);
     tf_static_broadcaster_ = std::make_shared<tf2_ros::StaticTransformBroadcaster>(this);
 }
 
@@ -344,8 +348,10 @@ void VisualServoing::readYamlTransformEEtoCAM()                                 
     double tx, ty, tz;
     double qw, qx, qy, qz;
     
-    fs["ee_frame"] >> ee_frame;
-    fs["camera_frame"] >> camera_frame;
+    fs["ee_frame"] >> ee_frame_;
+    fs["camera_frame"] >> camera_frame_;
+    std::cout<<"ee_frame_ = "<<ee_frame_<<std::endl;
+    std::cout<<"camera_frame_ = "<<camera_frame_<<std::endl;
     fs["tx"] >> tx;
     fs["ty"] >> ty;
     fs["tz"] >> tz;
@@ -363,8 +369,8 @@ void VisualServoing::readYamlTransformEEtoCAM()                                 
     geometry_msgs::msg::TransformStamped t;
 
     t.header.stamp = this->get_clock()->now();
-    t.header.frame_id = ee_frame;
-    t.child_frame_id = camera_frame;
+    t.header.frame_id = ee_frame_;
+    t.child_frame_id = camera_frame_;
 
     t.transform.translation.x = tx;
     t.transform.translation.y = ty;
@@ -434,7 +440,7 @@ void VisualServoing::sat (
     }
 
     norme_angular = float(std::sqrt(omega_c[0]*omega_c[0] + omega_c[1]*omega_c[1] + omega_c[2]*omega_c[2]));
-    if (norme_linear > v_max_max){
+    if (norme_angular > omega_max_max){
         for (int i = 0; i < 3; i++) {
             v_c[i] = v_c[i] * (omega_max_max/norme_angular);
             omega_c[i] = omega_c[i] * (omega_max_max/norme_angular);
@@ -450,16 +456,15 @@ void VisualServoing::timer_callback(){
     double sum_position_apriltag_callback;
     sum_position_apriltag_callback = apriltag.position[0] + apriltag.position[1] + apriltag.position[2];
     if (sum_position_apriltag_callback == 0.0){
-        geometry_msgs::msg::TwistStamped vel_to_pub;
-        vel_to_pub.header.stamp = this->now();
-        vel_to_pub.header.frame_id = "base_link";
-        vel_to_pub.twist.linear.x = 0.0;
-        vel_to_pub.twist.linear.y = 0.0;
-        vel_to_pub.twist.linear.z = 0.0;
-        vel_to_pub.twist.angular.x = 0.0;
-        vel_to_pub.twist.angular.y = 0.0;
-        vel_to_pub.twist.angular.z = 0.0;
-        visual_servoing_velocity_pub->publish(vel_to_pub);
+        vel_to_pub_.header.stamp = this->now();
+        vel_to_pub_.header.frame_id = "base_link";
+        vel_to_pub_.twist.linear.x = 0.0;
+        vel_to_pub_.twist.linear.y = 0.0;
+        vel_to_pub_.twist.linear.z = 0.0;
+        vel_to_pub_.twist.angular.x = 0.0;
+        vel_to_pub_.twist.angular.y = 0.0;
+        vel_to_pub_.twist.angular.z = 0.0;
+        visual_servoing_velocity_pub->publish(vel_to_pub_);
         position_saved_step = 0;
         position_current_step = 1;
     }
@@ -515,7 +520,6 @@ void VisualServoing::timer_callback(){
         t.transform.rotation.y = r_CAMtoTAGd.y();
         t.transform.rotation.z = r_CAMtoTAGd.z();
         t.transform.rotation.w = r_CAMtoTAGd.w();
-
         tf_static_broadcaster_->sendTransform(t);
 
         // param #4 - transformation of Camera's frame to Tag frame currently read                                  // OK
@@ -531,7 +535,7 @@ void VisualServoing::timer_callback(){
         CAMtoTAG.orientation = r_CAMtoTAG.toRotationMatrix();
         
         // param #5 - transformation of robot Base's frame to EE's frame currently read                             // OK
-        auto temp_BtoEE = tf_buffer_->lookupTransform("base_link", "end_effector_link",tf2::TimePointZero);
+        auto temp_BtoEE = tf_buffer_->lookupTransform("base_link", ee_frame_,tf2::TimePointZero);
         Eigen::Vector3d t_BtoEE;
         t_BtoEE <<  temp_BtoEE.transform.translation.x,
                     temp_BtoEE.transform.translation.y,
@@ -569,58 +573,48 @@ void VisualServoing::timer_callback(){
         Eigen::Vector3d velocity_of_ee_in_cam;
         velocity_of_ee_in_cam = velocity_of_tagEee_in_b+((EEtoCAM.orientation*EEtoCAM.position)+CAMtoTAG.position).cross(-omega_of_tagEtag_in_cam);
         
-        Eigen::Vector3d velocity_of_ee_in_b;
-        Eigen::Vector3d omega_of_ee_in_b;
-        velocity_of_ee_in_b = (BtoEE.orientation*EEtoCAM.orientation)*velocity_of_ee_in_cam;
-        omega_of_ee_in_b = (BtoEE.orientation*EEtoCAM.orientation)*(-omega_of_tagEtag_in_cam);
+        velocity_of_ee_in_b_ =  ( (BtoEE.orientation*EEtoCAM.orientation)*velocity_of_ee_in_cam );
+        omega_of_ee_in_b_ = ( (BtoEE.orientation*EEtoCAM.orientation)*(-omega_of_tagEtag_in_cam) );
         
         // Saturation
-        float v_max_max = command_max_linear_velocity_;                                                       // 0.2
-        float characteristic_lenght = 0.5;                                                                    // 0.5
-        float omega_max_max = v_max_max/characteristic_lenght;                                                // option #2 : omega_max_max = command_max_angular_velocity_;
-        sat(velocity_of_ee_in_b, omega_of_ee_in_b, v_max_max,omega_max_max);
+        float v_max_max = command_max_linear_velocity_;
+        float omega_max_max = command_max_angular_velocity_;
+        sat(velocity_of_ee_in_b_, omega_of_ee_in_b_, v_max_max,omega_max_max);
         
-        // Normalization
-        velocity_of_ee_in_b = velocity_of_ee_in_b / v_max_max;
-        omega_of_ee_in_b = omega_of_ee_in_b / omega_max_max;
+        // Scaling between -1.0 and 1.0
+        velocity_of_ee_in_b_ = velocity_of_ee_in_b_ / v_max_max;
+        omega_of_ee_in_b_ = omega_of_ee_in_b_ / omega_max_max;
 
+        velocity_of_ee_in_b_ = 0.9 * old_velocity_of_ee_in_b_ + 0.1* velocity_of_ee_in_b_;
+        omega_of_ee_in_b_ = 0.9 * old_omega_of_ee_in_b_ + 0.1 * omega_of_ee_in_b_;
+
+        old_velocity_of_ee_in_b_ = velocity_of_ee_in_b_;
+        old_omega_of_ee_in_b_ = omega_of_ee_in_b_;
+        
         float error_position;
-        error_position = abs(velocity_of_ee_in_b[0]) + abs(velocity_of_ee_in_b[1]) + abs(velocity_of_ee_in_b[2]);
+        error_position = abs(velocity_of_ee_in_b_[0]) + abs(velocity_of_ee_in_b_[1]) + abs(velocity_of_ee_in_b_[2]);
         float error_orientation;
-        error_orientation = abs(omega_of_ee_in_b[0]) + abs(omega_of_ee_in_b[1]) + abs(omega_of_ee_in_b[2]);
+        error_orientation = abs(omega_of_ee_in_b_[0]) + abs(omega_of_ee_in_b_[1]) + abs(omega_of_ee_in_b_[2]);
         
         if (error_position<tolerance_linear && error_orientation<tolerance_angular && position_current_step<number_of_position_saved){
             position_current_step = position_current_step+1;
         }
+
         // publication
         //  outputs : 
         //      -> velocity_of_ee_in_b[3]
         //      -> omega_of_ee_in_b[3]
-        geometry_msgs::msg::TwistStamped vel_to_pub;
-        vel_to_pub.header.stamp = this->now();
-        vel_to_pub.header.frame_id = "base_link";
+        vel_to_pub_.header.stamp = this->now();
+        vel_to_pub_.header.frame_id = "base_link";
 
-        vel_to_pub.twist.linear.x = velocity_of_ee_in_b[0];
-        vel_to_pub.twist.linear.y = velocity_of_ee_in_b[1];
-        vel_to_pub.twist.linear.z = velocity_of_ee_in_b[2];
-        vel_to_pub.twist.angular.x = omega_of_ee_in_b[0];
-        vel_to_pub.twist.angular.y = omega_of_ee_in_b[1];
-        vel_to_pub.twist.angular.z = omega_of_ee_in_b[2];
+        vel_to_pub_.twist.linear.x = velocity_of_ee_in_b_[0];
+        vel_to_pub_.twist.linear.y = velocity_of_ee_in_b_[1];
+        vel_to_pub_.twist.linear.z = velocity_of_ee_in_b_[2];
+        vel_to_pub_.twist.angular.x = omega_of_ee_in_b_[0];
+        vel_to_pub_.twist.angular.y = omega_of_ee_in_b_[1];
+        vel_to_pub_.twist.angular.z = omega_of_ee_in_b_[2];
 
-        visual_servoing_velocity_pub->publish(vel_to_pub);
-
-        // Débug
-        geometry_msgs::msg::TwistStamped error_pub;
-        error_pub.header.stamp = this->now();
-        error_pub.header.frame_id = "base_link";
-
-        error_pub.twist.linear.x = abs(velocity_of_tagEtag_in_cam[0]/lambda);
-        error_pub.twist.linear.y = abs(velocity_of_tagEtag_in_cam[1]/lambda);
-        error_pub.twist.linear.z = abs(velocity_of_tagEtag_in_cam[2]/lambda);
-        error_pub.twist.angular.x = abs(CAM_theta_u[0]);
-        error_pub.twist.angular.y = abs(CAM_theta_u[1]);
-        error_pub.twist.angular.z = abs(CAM_theta_u[2]);
-        visual_servoing_error_pub->publish(error_pub);
+        visual_servoing_velocity_pub->publish(vel_to_pub_);
     }
 }
 

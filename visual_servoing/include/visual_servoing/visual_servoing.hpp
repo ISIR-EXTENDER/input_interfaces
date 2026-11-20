@@ -115,7 +115,6 @@ private:
   extender_msgs::msg::SharedControlGoalArray latest_tag_detected;
 
   rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr visual_servoing_velocity_pub;
-  rclcpp::Publisher<geometry_msgs::msg::TwistStamped>::SharedPtr visual_servoing_error_pub;
 
   rclcpp::Subscription<extender_msgs::msg::SharedControlGoalArray>::SharedPtr apriltag_sub;
   rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr visual_servoing_on_sub;
@@ -132,6 +131,9 @@ private:
   std::string topic_visual_servoing_on;
   std::string topic_visual_servoing_save;
   std::string topic_visual_servoing_clear;
+  std::string topic_visual_servoing_command;
+  std::string ee_frame_;
+  std::string camera_frame_;
   TransformHelper EEtoCAM;      // param #2 - calibration saved on yaml file
   TransformHelper CAMtoTAGd;  // param #3 - Apriltag saved on yaml file
   Eigen::Vector3d t_CAMtoTAGd;
@@ -161,5 +163,11 @@ private:
   // get qontrol_controller v_max param
   double command_max_linear_velocity_;
   double command_max_angular_velocity_;
-
+  
+  geometry_msgs::msg::TwistStamped vel_to_pub_;
+  Eigen::Vector3d velocity_of_ee_in_b_;
+  Eigen::Vector3d omega_of_ee_in_b_;
+  Eigen::Vector3d old_velocity_of_ee_in_b_;
+  Eigen::Vector3d old_omega_of_ee_in_b_;
+  
 };
