@@ -160,6 +160,10 @@ namespace joystick_mapper
     snake_button_ = declareButton("snake_button_index", -1, ButtonActivationMode::TOGGLE);
     home_button_ = declareButton("home_button_index", -1, ButtonActivationMode::TRIGGER);
     gripper_button_ = declareButton("gripper_button_index", -1, ButtonActivationMode::TOGGLE);
+    scale_increase_button_ = declareButton("scale_increase_button_index", -1, ButtonActivationMode::TRIGGER); 
+    scale_decrease_button_ = declareButton("scale_decrease_button_index", -1, ButtonActivationMode::TRIGGER); 
+    
+
     warnOnDuplicateButtonIndexes();
 
     if (deadzone_ < 0.0 || deadzone_ >= 1.0)
