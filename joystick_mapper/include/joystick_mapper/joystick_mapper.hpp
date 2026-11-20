@@ -104,6 +104,7 @@ namespace joystick_mapper
     Button jaco_button_;
     Button snake_button_;
     Button home_button_;
+    Button wrist_return_button_;
     Button gripper_button_;
     Button scale_increase_button_;
     Button scale_decrease_button_; 
